@@ -230,6 +230,62 @@ struct Queries {
         }
     }
 
+    // MARK: - Items Grouped by Tag
+
+    static func getItemsGroupedByTag(category: Category? = nil, done: Bool = false, searchQuery: String? = nil) throws -> [(tag: Tag?, items: [Item])] {
+        try db.read { db in
+            var baseSQL = "SELECT i.* FROM items i"
+            var conditions: [String] = ["i.done = ?"]
+            var args: [DatabaseValueConvertible] = [done]
+
+            if let category {
+                conditions.append("i.category = ?")
+                args.append(category)
+            }
+            if let searchQuery, !searchQuery.isEmpty {
+                conditions.append("i.text LIKE ?")
+                args.append("%\(searchQuery)%")
+            }
+
+            let whereClause = conditions.isEmpty ? "" : " WHERE " + conditions.joined(separator: " AND ")
+            let sql = baseSQL + whereClause + " ORDER BY i.createdAt DESC"
+            let allItems = try Item.fetchAll(db, sql: sql, arguments: StatementArguments(args))
+
+            var taggedGroups: [String: (tag: Tag, items: [Item])] = [:]
+            var untagged: [Item] = []
+
+            for item in allItems {
+                let tags = try Tag.fetchAll(db, sql: """
+                    SELECT t.* FROM tags t
+                    JOIN item_tags it ON it.tagId = t.id
+                    WHERE it.itemId = ?
+                    ORDER BY t.name
+                    """, arguments: [item.id])
+
+                if tags.isEmpty {
+                    untagged.append(item)
+                } else {
+                    for tag in tags {
+                        if taggedGroups[tag.id] == nil {
+                            taggedGroups[tag.id] = (tag: tag, items: [])
+                        }
+                        taggedGroups[tag.id]!.items.append(item)
+                    }
+                }
+            }
+
+            var result: [(tag: Tag?, items: [Item])] = taggedGroups.values
+                .sorted { $0.items.count > $1.items.count }
+                .map { (tag: $0.tag as Tag?, items: $0.items) }
+
+            if !untagged.isEmpty {
+                result.append((tag: nil, items: untagged))
+            }
+
+            return result
+        }
+    }
+
     // MARK: - Daily Dumps
 
     static func getOrCreateTodayDump() throws -> DailyDump {

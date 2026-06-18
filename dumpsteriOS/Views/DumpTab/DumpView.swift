@@ -5,8 +5,10 @@ struct DumpView: View {
     @State private var todayDump: DailyDump?
     @State private var pastDumps: [DailyDump] = []
     @State private var content = ""
+    @State private var newBulletText = ""
     @State private var expandedPastDays: Set<String> = []
     @State private var attentionItems: [Item] = []
+    @FocusState private var isEditorFocused: Bool
 
     var body: some View {
         ScrollView {
@@ -141,7 +143,7 @@ struct DumpView: View {
     // MARK: - Today Section
 
     private var todaySection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(DailyDump.displayDate(DailyDump.today()))
                     .font(.inter(13))
@@ -152,16 +154,38 @@ struct DumpView: View {
                     .foregroundStyle(Theme.textMuted)
             }
 
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: $content)
+            // Quick-add input
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Theme.accent)
+
+                TextField("Add a bullet...", text: $newBulletText)
                     .font(.inter(15))
                     .foregroundStyle(Theme.textPrimary)
+                    .submitLabel(.done)
+                    .onSubmit { addBullet() }
+            }
+            .padding(12)
+            .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+            .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.accent.opacity(0.3), lineWidth: 1))
+
+            // Today's notes (tap to edit)
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $content)
+                    .font(.inter(14))
+                    .foregroundStyle(Theme.textPrimary)
                     .scrollContentBackground(.hidden)
-                    .frame(minHeight: 200)
+                    .frame(minHeight: 150, maxHeight: 300)
+                    .focused($isEditorFocused)
                     .padding(12)
                     .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.border, lineWidth: 1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                            .strokeBorder(isEditorFocused ? Theme.accent.opacity(0.5) : Theme.border, lineWidth: 1)
+                    )
                     .onChange(of: content) { oldValue, newValue in
+                        guard isEditorFocused else { return }
                         guard newValue.count > oldValue.count else { saveDraft(); return }
                         var updated = newValue
 
@@ -190,13 +214,26 @@ struct DumpView: View {
                         saveDraft()
                     }
 
-                if content.isEmpty {
-                    Text("• Start typing your thoughts...")
-                        .font(.inter(15))
+                if content.isEmpty && !isEditorFocused {
+                    Text("Today's notes will appear here...")
+                        .font(.inter(14))
                         .foregroundStyle(Theme.textMuted)
                         .padding(16)
                         .allowsHitTesting(false)
                 }
+
+                if !isEditorFocused && !content.isEmpty {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { isEditorFocused = true }
+                }
+            }
+
+            if !isEditorFocused && !content.isEmpty {
+                Text("Tap notes to edit")
+                    .font(.inter(11))
+                    .foregroundStyle(Theme.textMuted.opacity(0.6))
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
         }
     }
@@ -255,6 +292,21 @@ struct DumpView: View {
     }
 
     // MARK: - Logic
+
+    private func addBullet() {
+        let text = newBulletText.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
+        let bulletLine = "• \(text)"
+        if content.isEmpty {
+            content = bulletLine
+        } else {
+            content += "\n\(bulletLine)"
+        }
+        processLineIfNeeded(bulletLine)
+        processMagicTags(line: bulletLine)
+        saveDraft()
+        newBulletText = ""
+    }
 
     private var bulletCount: Int {
         content.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
