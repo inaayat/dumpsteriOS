@@ -26,6 +26,15 @@ struct DumpView: View {
         .background(Theme.canvas)
         .navigationTitle("Daily Dump")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+                .font(.inter(14, weight: .semibold))
+            }
+        }
         .onAppear { reload() }
     }
 

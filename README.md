@@ -28,13 +28,19 @@ iOS companion to the [Dumpster](https://github.com/inaayat/dumpster) macOS app. 
 5. **Trust the developer certificate on iPhone** — Settings → General → VPN & Device Management → tap your Apple ID → Trust
 6. **Run again (⌘R)** — the app launches on your phone
 
+### Wireless Setup (One-Time, So You Never Need the Cable Again)
+
+1. **Plug your iPhone in** one more time
+2. In Xcode: **Window → Devices and Simulators** → select your iPhone → check **"Connect via network"**
+3. **Unplug** — your iPhone will stay visible in Xcode's device picker over Wi-Fi (both devices must be on the same network)
+
 ### Weekly Re-deploy (Free Tier Expires Every 7 Days)
 
 The free provisioning profile expires after 7 days. To refresh wirelessly:
 
-1. **Enable wireless debugging** (one-time): with iPhone plugged in, go to Xcode → Window → Devices and Simulators → select your iPhone → check "Connect via network"
-2. **Unplug the cable** — your iPhone stays visible in Xcode's device picker over Wi-Fi (both devices must be on the same network)
-3. **Every 7 days**: open the project in Xcode, select your iPhone, hit ⌘R — rebuilds and re-deploys wirelessly in ~15 seconds
+1. Open the project in Xcode
+2. Select your iPhone from the device picker
+3. Hit **⌘R** — rebuilds and re-deploys wirelessly in ~15 seconds
 
 ### Troubleshooting
 
