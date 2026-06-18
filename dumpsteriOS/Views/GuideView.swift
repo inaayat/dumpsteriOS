@@ -19,6 +19,37 @@ struct GuideView: View {
                         .foregroundStyle(Theme.textMuted)
                 }
 
+                // Refresh App
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.warnColor)
+                        Text("Refresh Every 7 Days")
+                            .font(.inter(16, weight: .bold))
+                            .foregroundStyle(Theme.textPrimary)
+                    }
+
+                    Text("The free developer profile expires weekly. To refresh wirelessly:")
+                        .font(.inter(13))
+                        .foregroundStyle(Theme.textMuted)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        refreshStep("1", text: "Open dumpsteriOS.xcodeproj on your Mac")
+                        refreshStep("2", text: "Select your iPhone from the device picker")
+                        refreshStep("3", text: "Press ⌘R — rebuilds wirelessly in ~15 seconds")
+                    }
+
+                    Text("Both devices must be on the same Wi-Fi network.")
+                        .font(.inter(11))
+                        .foregroundStyle(Theme.textMuted)
+                        .italic()
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.warnColor.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+                .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.warnColor.opacity(0.2), lineWidth: 1))
+
                 // Daily Dump
                 guideSection(
                     icon: "flame.fill",
@@ -180,6 +211,19 @@ struct GuideView: View {
                 .frame(width: 90, alignment: .leading)
             Text(desc)
                 .font(.inter(12))
+                .foregroundStyle(Theme.textSecondary)
+        }
+    }
+
+    private func refreshStep(_ number: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(number)
+                .font(.inter(12, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(Theme.warnColor, in: Circle())
+            Text(text)
+                .font(.inter(13))
                 .foregroundStyle(Theme.textSecondary)
         }
     }
