@@ -85,7 +85,7 @@ struct GuideView: View {
                         magicTagRow("#resource", color: Theme.resourceColor, desc: "Creates a resource item (link/reference)")
                         magicTagRow("#prio", color: .red, desc: "Creates a high-priority action item")
                         magicTagRow("#backlog", color: .gray, desc: "Creates a backlog item (low priority)")
-                        magicTagRow("#save", color: Theme.accent, desc: "Appends bullet to the tag's Master Doc")
+                        magicTagRow("#save", color: Theme.accent, desc: "Saves bullet to the tag's Master Doc (AI-sorted if available)")
                         magicTagRow("#delete", color: .red, desc: "Deletes matching item from Items")
                     }
                 }
@@ -129,10 +129,15 @@ struct GuideView: View {
                     items: [
                         "Each tag can have a Master Doc — a living document",
                         "Use #save in your dump to append a bullet to the tag's doc",
+                        "Full rich text editing: bold, italic, headings, bullet & numbered lists",
+                        "Indent/outdent with toolbar — auto-continues bullets on Return",
                         "Tap any doc to edit it directly",
                         "Swipe left to delete a doc"
                     ]
                 )
+
+                // AI Features
+                aiSection
 
                 // macOS Only
                 VStack(alignment: .leading, spacing: 10) {
@@ -150,11 +155,9 @@ struct GuideView: View {
                         .foregroundStyle(Theme.textMuted)
 
                     VStack(alignment: .leading, spacing: 8) {
-                        macOnlyRow(icon: "sparkles", text: "AI analysis — analyze dumps and synthesize docs")
                         macOnlyRow(icon: "star.fill", text: "Wins tab — track achievements with #win")
                         macOnlyRow(icon: "rectangle.on.rectangle", text: "Quick Dump panel — global hotkey (Ctrl+Opt+N)")
                         macOnlyRow(icon: "menubar.rectangle", text: "Menu bar icon with quick actions")
-                        macOnlyRow(icon: "arrow.triangle.merge", text: "Drag-and-drop tag merging")
                         macOnlyRow(icon: "square.and.arrow.up", text: "Export all data to Markdown")
                         macOnlyRow(icon: "moon.fill", text: "Bro mode (dark theme) — iOS uses system dark mode")
                     }
@@ -169,6 +172,71 @@ struct GuideView: View {
         .background(Theme.canvas)
         .navigationTitle("Guide")
         .navigationBarTitleDisplayMode(.large)
+    }
+
+    // MARK: - AI Section
+
+    private var aiSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.accent)
+                Text("On-Device AI")
+                    .font(.inter(16, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+
+            if #available(iOS 26.0, *), AIService.isAvailable {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 11)).foregroundStyle(Theme.successColor)
+                    Text("Apple Intelligence is active on this device")
+                        .font(.inter(12, weight: .medium)).foregroundStyle(Theme.successColor)
+                }
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle.fill").font(.system(size: 11)).foregroundStyle(Theme.textMuted)
+                    Text("Requires iPhone 15 Pro or later with Apple Intelligence enabled")
+                        .font(.inter(12)).foregroundStyle(Theme.textMuted)
+                }
+            }
+
+            Text("When available, AI enhances the app:")
+                .font(.inter(13))
+                .foregroundStyle(Theme.textMuted)
+
+            VStack(alignment: .leading, spacing: 6) {
+                aiFeatureRow(text: "#save bullets are AI-sorted into the right section of your Master Doc")
+                aiFeatureRow(text: "Sort Trash button reorganizes a Master Doc into a structured document")
+                aiFeatureRow(text: "All AI runs on-device — no data leaves your phone, no API keys needed")
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Without AI (older devices):")
+                    .font(.inter(12, weight: .semibold))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 6)
+                Text("Everything works normally — #save appends bullets as a list, and the Synthesize button is hidden. No features are lost, just the smart placement.")
+                    .font(.inter(12))
+                    .foregroundStyle(Theme.textMuted)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.accent.opacity(0.04), in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+        .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.accent.opacity(0.2), lineWidth: 1))
+    }
+
+    private func aiFeatureRow(text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "sparkle")
+                .font(.system(size: 9))
+                .foregroundStyle(Theme.accent)
+                .padding(.top, 3)
+            Text(text)
+                .font(.inter(13))
+                .foregroundStyle(Theme.textSecondary)
+        }
     }
 
     // MARK: - Components

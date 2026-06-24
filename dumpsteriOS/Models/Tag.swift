@@ -1,5 +1,7 @@
 import Foundation
 import GRDB
+import CoreTransferable
+import UniformTypeIdentifiers
 
 struct Tag: Identifiable, Codable, Equatable, Hashable {
     var id: String
@@ -18,6 +20,12 @@ extension Tag: FetchableRecord, PersistableRecord, TableRecord {
 extension Tag {
     static func new(name: String) -> Tag {
         Tag(id: UUID().uuidString, name: name.lowercased().trimmingCharacters(in: .whitespaces), createdAt: Date())
+    }
+}
+
+extension Tag: Transferable {
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .data)
     }
 }
 

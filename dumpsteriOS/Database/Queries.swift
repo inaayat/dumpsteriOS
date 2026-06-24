@@ -140,6 +140,23 @@ struct Queries {
         }
     }
 
+    static func renameTag(id: String, from oldName: String, to newName: String) throws {
+        let normalized = newName.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !normalized.isEmpty else { return }
+        try db.write { db in
+            try db.execute(sql: "UPDATE tags SET name = ? WHERE id = ?", arguments: [normalized, id])
+        }
+        // Replace #oldname with #newname in all dump bullet text
+        let dumps = try getAllDumps()
+        for dump in dumps {
+            let updated = dump.content
+                .replacingOccurrences(of: "#\(oldName)", with: "#\(normalized)", options: .caseInsensitive)
+            if updated != dump.content {
+                try updateDumpContent(id: dump.id, content: updated)
+            }
+        }
+    }
+
     static func getTagsForItem(itemId: String) throws -> [Tag] {
         try db.read { db in
             try Tag.fetchAll(db, sql: """
@@ -197,6 +214,41 @@ struct Queries {
         for name in tagNames {
             let tag = try getOrCreateTag(name: name)
             try? tagItem(itemId: itemId, tagId: tag.id)
+        }
+    }
+
+    static func mergeTags(fromId: String, intoId: String) throws {
+        // Merge MasterDocs before deleting the source tag
+        let sourceDoc = try getMasterDoc(tagId: fromId)
+        let targetDoc = try getMasterDoc(tagId: intoId)
+        if let src = sourceDoc {
+            if let tgt = targetDoc {
+                // Both exist — append source content under a divider
+                let combined = tgt.content + "\n\n---\n\n" + src.content
+                try upsertMasterDoc(tagId: intoId, content: combined, title: tgt.title)
+            } else {
+                // Only source has a doc — reassign it to the target tag
+                try upsertMasterDoc(tagId: intoId, content: src.content, title: src.title)
+            }
+            try deleteMasterDoc(id: src.id)
+        }
+
+        try db.write { db in
+            let existing = try ItemTag
+                .filter(ItemTag.Columns.tagId == intoId)
+                .fetchAll(db)
+                .map(\.itemId)
+            let toReassign = try ItemTag
+                .filter(ItemTag.Columns.tagId == fromId)
+                .fetchAll(db)
+            for row in toReassign where !existing.contains(row.itemId) {
+                try ItemTag(itemId: row.itemId, tagId: intoId).insert(db)
+            }
+            _ = try ItemTag.filter(ItemTag.Columns.tagId == fromId).deleteAll(db)
+            _ = try TagRelationship
+                .filter(TagRelationship.Columns.parentTagId == fromId || TagRelationship.Columns.childTagId == fromId)
+                .deleteAll(db)
+            _ = try Tag.filter(Tag.Columns.id == fromId).deleteAll(db)
         }
     }
 

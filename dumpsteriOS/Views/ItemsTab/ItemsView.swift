@@ -119,7 +119,7 @@ struct ItemsView: View {
             ItemCard(item: item, tags: itemTags[item.id] ?? [])
         }
         .swipeActions(edge: .leading) {
-            if item.category == .action && !item.done {
+            if (item.category == .action || item.category == .brainstorm) && !item.done {
                 Button {
                     try? Queries.completeItem(id: item.id)
                     appState.refreshCounts()
@@ -128,6 +128,15 @@ struct ItemsView: View {
                     Label("Done", systemImage: "checkmark")
                 }
                 .tint(Theme.successColor)
+            } else if item.done {
+                Button {
+                    try? Queries.uncompleteItem(id: item.id)
+                    appState.refreshCounts()
+                    reload()
+                } label: {
+                    Label("Reopen", systemImage: "arrow.uturn.left")
+                }
+                .tint(Theme.accent)
             }
         }
         .swipeActions(edge: .trailing) {

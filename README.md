@@ -1,14 +1,51 @@
-# Dumpster iOS
+# Dumpster iOS — Version 2
 
 iOS companion to the [Dumpster](https://github.com/inaayat/dumpster) macOS app. A personal thought dumpster — capture everything, sort later.
+
+## What's New in Version 2
+
+**On-Device AI (Apple Intelligence)**
+- **Sort Trash** — AI reorganizes your Master Docs into well-structured documents with headings and sections
+- **Smart #save** — when you use `#save` in your dump, AI places the bullet into the correct section of the Master Doc (not just appended at the bottom)
+- **Analyze Dump** — AI extracts action items and suggests tags from your daily dump
+- Runs entirely on-device via Apple's Foundation Models framework — no API keys, no data leaves your phone
+- **Requires iPhone 15 Pro or later** with Apple Intelligence enabled (iOS 26+)
+- **The app works fully without AI** — older devices get all features except smart placement and Sort Trash; `#save` appends bullets as a list instead
+
+**Rich Text Master Doc Editor**
+- Full Notes-app-style editing: bold, italic, underline, strikethrough
+- Headings (Title, Heading, Subheading, Body)
+- Bullet and numbered lists with auto-continuation on Return
+- Indent/outdent with hanging indents and per-level bullet markers (•, ◦, ▪)
+- Backspace on empty bullet outdents or exits the list
+- Formatting toolbar above the keyboard (inputAccessoryView)
+- RTF persistence — formatting survives save/reload
+
+**Tag Management**
+- Drag-and-drop merge tags in the Tags tab
+- Rename tags across all items and dump content
+- Add/remove tags on items and individual dump bullets
+- MasterDocs consolidate correctly during tag merges
+
+**Item Editing**
+- Edit item text inline (pencil icon in detail view)
+- Create linked resources directly from action/brainstorm items
+- Complete/reopen brainstorm items (not just actions)
+- Swipe-to-complete and swipe-to-reopen in every view
+
+**UX Improvements**
+- Auto-expanding "Add a bullet" text field
+- URL bullets auto-create resource items with `[bracket]` title support
+- Reduced tag spacing in Tags tab
 
 ## Features
 
 - **Daily Dump** — bullet journal with auto-formatting and magic tags
 - **Items** — categorized tasks (Actions, Brainstorms, Resources) with priority and due dates
-- **Tags** — auto-created from #hashtags, with sub-tag hierarchy
-- **Master Docs** — living documents per tag, append with #save
-- **Guide** — in-app reference for all features
+- **Tags** — auto-created from #hashtags, drag-drop merge, rename, sub-tag hierarchy
+- **Master Docs** — rich text documents per tag, AI-sorted with #save
+- **On-Device AI** — Sort Trash, smart insert, dump analysis (iPhone 15 Pro+ only)
+- **Guide** — in-app reference for all features including AI availability status
 
 ## Deploy to iPhone (Free, No Developer Account Required)
 
@@ -52,17 +89,17 @@ The free provisioning profile expires after 7 days. To refresh wirelessly:
 
 ## Architecture
 
-- **Swift + SwiftUI** targeting iOS 18+
+- **Swift + SwiftUI** targeting iOS 26+
 - **GRDB** for local SQLite database (same schema as macOS app, separate local DB)
+- **Apple Foundation Models** for on-device AI (iOS 26+, iPhone 15 Pro+)
 - **No cloud sync** — data lives on-device only
 - Inter font family for consistent design with macOS app
 
-## macOS-Only Features (Not on iOS)
+## AI Compatibility
 
-- AI analysis (analyze dumps, synthesize docs)
-- Wins tab
-- Quick Dump floating panel (Ctrl+Opt+N hotkey)
-- Menu bar icon
-- Drag-and-drop tag merging
-- Export to Markdown
-- Bro mode (dark theme toggle — iOS follows system dark mode)
+| Device | AI Features | Everything Else |
+|--------|------------|-----------------|
+| iPhone 15 Pro / Pro Max or later | Full AI (Sort Trash, smart #save, analyze) | All features |
+| iPhone 15 / 14 / older | Not available — buttons hidden | All features work normally |
+
+The app detects Apple Intelligence availability at runtime and hides AI UI on unsupported devices. No features are lost — `#save` simply appends as a bullet list, and the Sort Trash button doesn't appear.

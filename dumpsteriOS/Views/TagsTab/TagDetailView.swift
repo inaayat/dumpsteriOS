@@ -17,7 +17,7 @@ struct TagDetailView: View {
                             ItemCard(item: item)
                         }
                         .swipeActions(edge: .leading) {
-                            if item.category == .action && !item.done {
+                            if (item.category == .action || item.category == .brainstorm) && !item.done {
                                 Button {
                                     try? Queries.completeItem(id: item.id)
                                     appState.refreshCounts()
@@ -26,6 +26,15 @@ struct TagDetailView: View {
                                     Label("Done", systemImage: "checkmark")
                                 }
                                 .tint(Theme.successColor)
+                            } else if item.done {
+                                Button {
+                                    try? Queries.uncompleteItem(id: item.id)
+                                    appState.refreshCounts()
+                                    loadData()
+                                } label: {
+                                    Label("Reopen", systemImage: "arrow.uturn.left")
+                                }
+                                .tint(Theme.accent)
                             }
                         }
                     }

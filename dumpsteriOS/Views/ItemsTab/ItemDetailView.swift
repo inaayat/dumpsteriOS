@@ -11,6 +11,13 @@ struct ItemDetailView: View {
     @State private var showDeleteConfirm = false
     @State private var showDatePicker = false
     @State private var editedDate = Date()
+    @State private var showTagEditor = false
+    @State private var isEditingText = false
+    @State private var editedText = ""
+    @FocusState private var textFieldFocused: Bool
+    @State private var showCreateResource = false
+    @State private var newResourceURL = ""
+    @State private var newResourceTitle = ""
 
     var body: some View {
         if let item {
@@ -38,7 +45,7 @@ struct ItemDetailView: View {
 
                         Spacer()
 
-                        if item.category == .action && !item.done {
+                        if (item.category == .action || item.category == .brainstorm) && !item.done {
                             Button {
                                 try? Queries.completeItem(id: item.id)
                                 appState.refreshCounts()
@@ -48,26 +55,108 @@ struct ItemDetailView: View {
                                     .font(.inter(13, weight: .semibold))
                                     .foregroundStyle(Theme.successColor)
                             }
+                        } else if item.done {
+                            Button {
+                                try? Queries.uncompleteItem(id: item.id)
+                                appState.refreshCounts()
+                                loadData()
+                            } label: {
+                                Label("Reopen", systemImage: "arrow.uturn.left.circle")
+                                    .font(.inter(13, weight: .semibold))
+                                    .foregroundStyle(Theme.accent)
+                            }
                         }
                     }
 
                     // Text
-                    Text(item.text)
-                        .font(.inter(17, weight: .medium))
-                        .foregroundStyle(Theme.textPrimary)
+                    if isEditingText {
+                        TextField("Item text", text: $editedText, axis: .vertical)
+                            .font(.inter(17, weight: .medium))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(1...)
+                            .focused($textFieldFocused)
+                            .padding(10)
+                            .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.accent.opacity(0.5), lineWidth: 1))
+                            .onSubmit { commitTextEdit() }
+                            .toolbar {
+                                ToolbarItemGroup(placement: .keyboard) {
+                                    Spacer()
+                                    Button("Done") { commitTextEdit() }
+                                        .font(.inter(14, weight: .semibold))
+                                }
+                            }
+                            .onChange(of: textFieldFocused) { _, focused in
+                                if !focused { commitTextEdit() }
+                            }
+                    } else {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(item.text)
+                                .font(.inter(17, weight: .medium))
+                                .foregroundStyle(Theme.textPrimary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Button {
+                                editedText = item.text
+                                isEditingText = true
+                                textFieldFocused = true
+                            } label: {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                        }
+                    }
 
                     // Tags
-                    if !tags.isEmpty {
-                        FlowLayout(spacing: 6) {
-                            ForEach(tags) { tag in
+                    FlowLayout(spacing: 6) {
+                        ForEach(tags) { tag in
+                            HStack(spacing: 4) {
                                 Text("#\(tag.name)")
                                     .font(.inter(12, weight: .semibold))
                                     .foregroundStyle(Theme.accent)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(Theme.accent.opacity(0.1), in: Capsule())
+                                Button {
+                                    try? Queries.untagItem(itemId: itemId, tagId: tag.id)
+                                    loadData()
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(Theme.textMuted)
+                                }
                             }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Theme.accent.opacity(0.1), in: Capsule())
                         }
+                        Button {
+                            showTagEditor = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text("tag")
+                                    .font(.inter(12))
+                            }
+                            .foregroundStyle(Theme.textMuted)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Theme.cardAlt, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .sheet(isPresented: $showTagEditor) {
+                        TagEditorView(
+                            currentTags: tags.map(\.name),
+                            onAdd: { name in
+                                try? Queries.tagItemWithNames(itemId: itemId, tagNames: [name])
+                                loadData()
+                            },
+                            onRemove: { name in
+                                if let tag = tags.first(where: { $0.name == name }) {
+                                    try? Queries.untagItem(itemId: itemId, tagId: tag.id)
+                                    loadData()
+                                }
+                            }
+                        )
                     }
 
                     // Due date
@@ -146,6 +235,26 @@ struct ItemDetailView: View {
                         }
                     }
 
+                    // Create linked resource
+                    if item.category == .action || item.category == .brainstorm {
+                        Button {
+                            newResourceURL = ""
+                            newResourceTitle = ""
+                            showCreateResource = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "link.badge.plus")
+                                    .font(.system(size: 13))
+                                Text("Create Linked Resource")
+                                    .font(.inter(13, weight: .medium))
+                            }
+                            .foregroundStyle(Theme.resourceColor)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Theme.resourceColor.opacity(0.08), in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+                        }
+                    }
+
                     Spacer(minLength: 20)
 
                     // Delete
@@ -198,6 +307,9 @@ struct ItemDetailView: View {
                     appState.refreshCounts()
                 }
             }
+            .sheet(isPresented: $showCreateResource) {
+                createResourceSheet
+            }
             .onAppear { loadData() }
         } else {
             ProgressView()
@@ -212,6 +324,91 @@ struct ItemDetailView: View {
         case .low: return "arrow.down"
         case .backlog: return "archivebox"
         }
+    }
+
+    private var createResourceSheet: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Link a resource to this item")
+                    .font(.inter(14))
+                    .foregroundStyle(Theme.textMuted)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("URL")
+                        .font(.inter(12, weight: .semibold))
+                        .foregroundStyle(Theme.textMuted)
+                    TextField("https://...", text: $newResourceURL)
+                        .font(.inter(14))
+                        .keyboardType(.URL)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .padding(10)
+                        .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.border, lineWidth: 1))
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Title (optional)")
+                        .font(.inter(12, weight: .semibold))
+                        .foregroundStyle(Theme.textMuted)
+                    TextField("Resource name", text: $newResourceTitle)
+                        .font(.inter(14))
+                        .padding(10)
+                        .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.border, lineWidth: 1))
+                }
+
+                Spacer()
+            }
+            .padding(20)
+            .background(Theme.canvas)
+            .navigationTitle("Create Resource")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showCreateResource = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") { createLinkedResource() }
+                        .font(.inter(14, weight: .semibold))
+                        .disabled(newResourceURL.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func createLinkedResource() {
+        let url = newResourceURL.trimmingCharacters(in: .whitespaces)
+        guard !url.isEmpty else { return }
+        let title = newResourceTitle.trimmingCharacters(in: .whitespaces)
+        let resourceText = title.isEmpty ? url : title
+
+        let resource = Item.new(text: resourceText, category: .resource, url: url, urlTitle: title.isEmpty ? nil : title)
+        try? Queries.addItem(resource)
+
+        // Copy tags from parent item to resource
+        for tag in tags {
+            try? Queries.tagItem(itemId: resource.id, tagId: tag.id)
+        }
+
+        // Link the resource to this item
+        let link = ItemLink(id: UUID().uuidString, fromItemId: itemId, toItemId: resource.id, relationship: "resource", createdAt: Date())
+        try? Queries.addLink(link)
+
+        appState.refreshCounts()
+        showCreateResource = false
+        loadData()
+    }
+
+    private func commitTextEdit() {
+        guard var updated = item else { isEditingText = false; return }
+        let trimmed = editedText.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { isEditingText = false; return }
+        updated.text = trimmed
+        try? Queries.updateItem(updated)
+        self.item = updated
+        isEditingText = false
     }
 
     private func setPriority(_ priority: Priority) {

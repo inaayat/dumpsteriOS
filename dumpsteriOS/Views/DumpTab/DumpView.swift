@@ -9,6 +9,7 @@ struct DumpView: View {
     @State private var expandedPastDays: Set<String> = []
     @State private var attentionItems: [Item] = []
     @FocusState private var isEditorFocused: Bool
+    @State private var tagEditorLineIndex: Int? = nil
 
     var body: some View {
         ScrollView {
@@ -38,17 +39,42 @@ struct DumpView: View {
             }
         }
         .onAppear { reload() }
+        .sheet(isPresented: .init(
+            get: { tagEditorLineIndex != nil },
+            set: { if !$0 { tagEditorLineIndex = nil } }
+        )) {
+            if let lineIndex = tagEditorLineIndex {
+                let lines = content.components(separatedBy: "\n")
+                let line = lineIndex < lines.count ? lines[lineIndex] : ""
+                let currentTags = DumpBullet.parse(from: line).first?.tags ?? []
+                TagEditorView(
+                    currentTags: currentTags,
+                    onAdd: { name in addTagToLine(name, at: lineIndex) },
+                    onRemove: { name in removeTagFromLine(name, at: lineIndex) }
+                )
+            }
+        }
     }
 
     // MARK: - Hints
+
+    private var aiIsAvailable: Bool {
+        if #available(iOS 26.0, *) { return AIService.isAvailable }
+        return false
+    }
 
     private var dumpHints: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 hintChip(icon: "list.bullet", text: "Type * or • to start a bullet")
                 hintChip(icon: "tag", text: "#tags auto-categorize bullets")
-                hintChip(icon: "doc.text", text: "#save appends to Master Doc")
-                hintChip(icon: "sparkles", text: "AI extracts action items")
+                hintChip(icon: "link", text: "URLs auto-save as resources")
+                if aiIsAvailable {
+                    hintChip(icon: "doc.text", text: "#save AI-sorts into Master Doc")
+                    hintChip(icon: "sparkles", text: "AI extracts action items")
+                } else {
+                    hintChip(icon: "doc.text", text: "#save appends to Master Doc")
+                }
             }
         }
     }
@@ -120,9 +146,16 @@ struct DumpView: View {
 
             ForEach(attentionItems) { item in
                 HStack(spacing: 8) {
-                    Circle()
-                        .fill(item.isOverdue ? Color.red : (item.isDueToday ? Theme.warnColor : Theme.actionColor))
-                        .frame(width: 6, height: 6)
+                    Button {
+                        try? Queries.completeItem(id: item.id)
+                        appState.refreshCounts()
+                        reload()
+                    } label: {
+                        Image(systemName: "circle")
+                            .font(.system(size: 16))
+                            .foregroundStyle(item.isOverdue ? .red : (item.isDueToday ? Theme.warnColor : Theme.actionColor))
+                    }
+                    .buttonStyle(.plain)
                     Text(item.text)
                         .font(.inter(12))
                         .foregroundStyle(Theme.textPrimary)
@@ -160,9 +193,10 @@ struct DumpView: View {
                     .font(.system(size: 18))
                     .foregroundStyle(Theme.accent)
 
-                TextField("Add a bullet...", text: $newBulletText)
+                TextField("Add a bullet...", text: $newBulletText, axis: .vertical)
                     .font(.inter(15))
                     .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1...6)
                     .submitLabel(.done)
                     .onSubmit { addBullet() }
             }
@@ -170,70 +204,62 @@ struct DumpView: View {
             .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
             .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.accent.opacity(0.3), lineWidth: 1))
 
-            // Today's notes (tap to edit)
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: $content)
-                    .font(.inter(14))
-                    .foregroundStyle(Theme.textPrimary)
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 150, maxHeight: 300)
-                    .focused($isEditorFocused)
-                    .padding(12)
-                    .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                            .strokeBorder(isEditorFocused ? Theme.accent.opacity(0.5) : Theme.border, lineWidth: 1)
-                    )
-                    .onChange(of: content) { oldValue, newValue in
-                        guard isEditorFocused else { return }
-                        guard newValue.count > oldValue.count else { saveDraft(); return }
-                        var updated = newValue
+            // Today's notes: bullet rows when not editing, TextEditor when editing
+            if isEditorFocused {
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $content)
+                        .font(.inter(14))
+                        .foregroundStyle(Theme.textPrimary)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 150, maxHeight: 300)
+                        .focused($isEditorFocused)
+                        .padding(12)
+                        .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                                .strokeBorder(Theme.accent.opacity(0.5), lineWidth: 1)
+                        )
+                        .onChange(of: content) { oldValue, newValue in
+                            guard isEditorFocused else { return }
+                            guard newValue.count > oldValue.count else { saveDraft(); return }
+                            var updated = newValue
 
-                        if updated.hasSuffix("* ") {
-                            let beforeStar = updated.dropLast(2)
-                            if beforeStar.isEmpty || beforeStar.last == "\n" {
-                                updated = String(beforeStar) + "• "
-                            }
-                        }
-
-                        if updated.hasSuffix("\n") {
-                            let lines = updated.components(separatedBy: "\n")
-                            if lines.count >= 2 {
-                                let completedLine = lines[lines.count - 2]
-                                if !completedLine.trimmingCharacters(in: .whitespaces).isEmpty {
-                                    processLineIfNeeded(completedLine)
-                                    processMagicTags(line: completedLine)
+                            if updated.hasSuffix("* ") {
+                                let beforeStar = updated.dropLast(2)
+                                if beforeStar.isEmpty || beforeStar.last == "\n" {
+                                    updated = String(beforeStar) + "• "
                                 }
                             }
-                            updated += "• "
+
+                            if updated.hasSuffix("\n") {
+                                let lines = updated.components(separatedBy: "\n")
+                                if lines.count >= 2 {
+                                    let completedLine = lines[lines.count - 2]
+                                    if !completedLine.trimmingCharacters(in: .whitespaces).isEmpty {
+                                        processLineIfNeeded(completedLine)
+                                        processMagicTags(line: completedLine)
+                                    }
+                                }
+                                updated += "• "
+                            }
+
+                            if updated != newValue {
+                                content = updated
+                            }
+                            saveDraft()
                         }
-
-                        if updated != newValue {
-                            content = updated
-                        }
-                        saveDraft()
-                    }
-
-                if content.isEmpty && !isEditorFocused {
-                    Text("Today's notes will appear here...")
-                        .font(.inter(14))
-                        .foregroundStyle(Theme.textMuted)
-                        .padding(16)
-                        .allowsHitTesting(false)
                 }
-
-                if !isEditorFocused && !content.isEmpty {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture { isEditorFocused = true }
-                }
-            }
-
-            if !isEditorFocused && !content.isEmpty {
-                Text("Tap notes to edit")
-                    .font(.inter(11))
-                    .foregroundStyle(Theme.textMuted.opacity(0.6))
-                    .frame(maxWidth: .infinity, alignment: .center)
+            } else if content.isEmpty {
+                Text("Today's notes will appear here...")
+                    .font(.inter(14))
+                    .foregroundStyle(Theme.textMuted)
+                    .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
+                    .padding(16)
+                    .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.border, lineWidth: 1))
+                    .onTapGesture { isEditorFocused = true }
+            } else {
+                bulletRows
             }
         }
     }
@@ -310,6 +336,67 @@ struct DumpView: View {
 
     private var bulletCount: Int {
         content.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
+    }
+
+    private var bulletRows: some View {
+        let lines = content.components(separatedBy: "\n")
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(trimmed)
+                            .font(.inter(14))
+                            .foregroundStyle(Theme.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .onTapGesture { isEditorFocused = true }
+                        Button {
+                            tagEditorLineIndex = index
+                        } label: {
+                            Image(systemName: "tag")
+                                .font(.system(size: 12))
+                                .foregroundStyle(hasTagsInLine(trimmed) ? Theme.accent : Theme.textMuted.opacity(0.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    if index < lines.count - 1 {
+                        Divider().padding(.leading, 12)
+                    }
+                }
+            }
+        }
+        .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+        .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.border, lineWidth: 1))
+    }
+
+    private func hasTagsInLine(_ line: String) -> Bool {
+        line.range(of: #"#[\w\-]+"#, options: .regularExpression) != nil
+    }
+
+    private func addTagToLine(_ name: String, at index: Int) {
+        var lines = content.components(separatedBy: "\n")
+        guard index < lines.count else { return }
+        let tag = "#\(name)"
+        guard !lines[index].contains(tag) else { return }
+        lines[index] = lines[index] + " \(tag)"
+        content = lines.joined(separator: "\n")
+        saveDraft()
+        processLineIfNeeded(lines[index])
+    }
+
+    private func removeTagFromLine(_ name: String, at index: Int) {
+        var lines = content.components(separatedBy: "\n")
+        guard index < lines.count else { return }
+        let updated = lines[index]
+            .replacingOccurrences(of: " #\(name)", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: "#\(name)", with: "", options: .caseInsensitive)
+            .trimmingCharacters(in: .whitespaces)
+        lines[index] = updated
+        content = lines.joined(separator: "\n")
+        saveDraft()
     }
 
     private func processMagicTags(line: String) {
