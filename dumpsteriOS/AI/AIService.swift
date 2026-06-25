@@ -13,33 +13,118 @@ struct AIService {
     // MARK: - Insert Bullets Into Doc
 
     static func insertBulletsIntoDoc(existingContent: String, bullets: [String]) async throws -> String {
-        let session = LanguageModelSession(instructions: """
-            You integrate new notes into an existing document. For each new bullet:
-            1. Find the most relevant existing heading/section to place it under
-            2. Expand the bullet into a full insight — complete sentences, connect to other content
-            3. If no existing heading fits, create a new section heading (## Title)
-            4. Prefix each newly inserted line with "→ " so the user can see what was added
+        // Extract just the headings from the existing doc
+        let headings = existingContent.components(separatedBy: "\n")
+            .filter { $0.hasPrefix("##") || $0.hasPrefix("# ") }
+            .map { $0.trimmingCharacters(in: .whitespaces) }
 
-            Rules:
-            - Preserve ALL existing content exactly as-is
-            - Only ADD new content, never modify or remove existing lines
-            - Place new content logically within the section
-            - Use professional, clear language
-            - Return ONLY the full updated document
+        if headings.isEmpty && existingContent.isEmpty {
+            // Empty doc — just categorize the bullets under a heading
+            let session = LanguageModelSession(instructions: """
+                You receive new bullets to organize. Group them under short ## headings by topic.
+                Keep each bullet concise — one clean sentence. Do not add extra content.
+                Return ONLY markdown with ## headings and bullet points.
+                """)
+            let prompt = bullets.map { "• \($0)" }.joined(separator: "\n")
+            let response = try await session.respond(to: prompt)
+            return response.content
+        }
+
+        // Ask AI which heading each bullet belongs under
+        let session = LanguageModelSession(instructions: """
+            You are given a list of existing category headings from a document, and new bullets to place.
+            For each bullet, respond with EXACTLY one line in this format:
+            HEADING: bullet text
+
+            Where HEADING is either an existing heading from the list (use exact text), or a NEW heading you create if none fit.
+            Do not modify the bullet text. Just assign each one to a heading.
+            If you create a new heading, keep it short (2-4 words).
             """)
 
-        var prompt = "EXISTING DOCUMENT:\n"
-        prompt += existingContent.isEmpty ? "(empty document)" : existingContent
-        prompt += "\n\nNEW BULLETS TO INSERT:\n"
+        var prompt = "EXISTING HEADINGS:\n"
+        prompt += headings.isEmpty ? "(none yet)" : headings.joined(separator: "\n")
+        prompt += "\n\nBULLETS TO PLACE:\n"
         prompt += bullets.map { "• \($0)" }.joined(separator: "\n")
 
         let response = try await session.respond(to: prompt)
-        return response.content
+
+        // Parse AI response and insert bullets into the actual doc
+        return insertBulletsAtHeadings(existingContent: existingContent, aiResponse: response.content, originalBullets: bullets)
+    }
+
+    private static func insertBulletsAtHeadings(existingContent: String, aiResponse: String, originalBullets: [String]) -> String {
+        var doc = existingContent
+        var newSections: [String: [String]] = [:]
+
+        // Parse "HEADING: bullet text" lines from AI response
+        for line in aiResponse.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard let colonRange = trimmed.range(of: ": ", options: .literal) else { continue }
+            let heading = String(trimmed[trimmed.startIndex..<colonRange.lowerBound])
+                .replacingOccurrences(of: "## ", with: "")
+                .replacingOccurrences(of: "# ", with: "")
+                .trimmingCharacters(in: .whitespaces)
+            let bullet = String(trimmed[colonRange.upperBound...]).trimmingCharacters(in: .whitespaces)
+            guard !heading.isEmpty, !bullet.isEmpty else { continue }
+
+            // Try to find this heading in the existing doc
+            let lines = doc.components(separatedBy: "\n")
+            let headingIndex = lines.firstIndex { line in
+                let clean = line.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces)
+                return clean.lowercased() == heading.lowercased()
+            }
+
+            if let idx = headingIndex {
+                // Find the end of this section (next heading or end of doc)
+                var insertAt = idx + 1
+                while insertAt < lines.count && !lines[insertAt].hasPrefix("#") {
+                    insertAt += 1
+                }
+                // Insert bullet before the next heading (or at end)
+                var mutableLines = lines
+                mutableLines.insert("• \(bullet)", at: insertAt)
+                doc = mutableLines.joined(separator: "\n")
+            } else {
+                // New heading — collect for appending at end
+                newSections[heading, default: []].append(bullet)
+            }
+        }
+
+        // Append new sections at end
+        for (heading, bullets) in newSections {
+            doc += "\n\n## \(heading)\n"
+            doc += bullets.map { "• \($0)" }.joined(separator: "\n")
+        }
+
+        // Fallback: if parsing failed, just append the original bullets
+        if doc == existingContent {
+            let bulletLines = originalBullets.map { "• \($0)" }.joined(separator: "\n")
+            doc += doc.isEmpty ? bulletLines : "\n\(bulletLines)"
+        }
+
+        return doc
     }
 
     // MARK: - Synthesize Master Doc
 
+    enum AIError: LocalizedError {
+        case documentTooLarge
+
+        var errorDescription: String? {
+            switch self {
+            case .documentTooLarge:
+                return "Document too large for on-device AI. Use #save to add bullets individually — they'll be placed under the right category automatically."
+            }
+        }
+    }
+
     static func synthesizeMasterDoc(existingContent: String, bullets: String) async throws -> String {
+        let maxChars = 6000
+        let totalLength = existingContent.count + bullets.count
+        if totalLength > maxChars {
+            throw AIError.documentTooLarge
+        }
+
         let session = LanguageModelSession(instructions: """
             You sort and lightly clean up a list of personal notes. Your job is to:
             1. Group bullets under short, logical category headings (## Heading) based on their topic
@@ -57,27 +142,9 @@ struct AIService {
             Return ONLY the sorted document — no preamble, no commentary.
             """)
 
-        // On-device models have ~4K token context. Limit input to ~6000 chars.
-        let maxChars = 6000
-        var content = existingContent
-        var bulletText = bullets
-
-        let totalLength = content.count + bulletText.count
-        if totalLength > maxChars {
-            // Prioritize bullets (the new content to sort), trim existing
-            let bulletBudget = min(bulletText.count, maxChars / 2)
-            let contentBudget = maxChars - bulletBudget
-            if content.count > contentBudget {
-                content = String(content.prefix(contentBudget)) + "\n[...truncated]"
-            }
-            if bulletText.count > bulletBudget {
-                bulletText = String(bulletText.prefix(bulletBudget))
-            }
-        }
-
         var prompt = ""
-        if !content.isEmpty { prompt += "EXISTING DOCUMENT:\n\(content)\n\n" }
-        prompt += "BULLETS TO INTEGRATE:\n\(bulletText)"
+        if !existingContent.isEmpty { prompt += "EXISTING DOCUMENT:\n\(existingContent)\n\n" }
+        prompt += "BULLETS TO INTEGRATE:\n\(bullets)"
 
         let response = try await session.respond(to: prompt)
         return response.content
