@@ -1,6 +1,13 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct GuideView: View {
+    @State private var showExportShare = false
+    @State private var exportURL: URL?
+    @State private var showImportPicker = false
+    @State private var importMessage: String?
+    @State private var showImportAlert = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -139,6 +146,9 @@ struct GuideView: View {
                 // AI Features
                 aiSection
 
+                // Backup & Restore
+                backupSection
+
                 // macOS Only
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 8) {
@@ -172,6 +182,103 @@ struct GuideView: View {
         .background(Theme.canvas)
         .navigationTitle("Guide")
         .navigationBarTitleDisplayMode(.large)
+        .sheet(isPresented: $showExportShare) {
+            if let url = exportURL {
+                ShareSheet(items: [url])
+            }
+        }
+        .fileImporter(isPresented: $showImportPicker, allowedContentTypes: [.json]) { result in
+            switch result {
+            case .success(let url):
+                guard url.startAccessingSecurityScopedResource() else { return }
+                defer { url.stopAccessingSecurityScopedResource() }
+                do {
+                    let data = try Data(contentsOf: url)
+                    try BackupService.importAll(from: data)
+                    importMessage = "Restore complete! All data has been imported."
+                } catch {
+                    importMessage = "Import failed: \(error.localizedDescription)"
+                }
+                showImportAlert = true
+            case .failure(let error):
+                importMessage = "Could not open file: \(error.localizedDescription)"
+                showImportAlert = true
+            }
+        }
+        .alert("Import", isPresented: $showImportAlert) {
+            Button("OK") {}
+        } message: {
+            Text(importMessage ?? "")
+        }
+    }
+
+    // MARK: - Backup Section
+
+    private var backupSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "externaldrive.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.successColor)
+                Text("Backup & Restore")
+                    .font(.inter(16, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+
+            Text("Export your data as JSON. Import to restore after reinstalling.")
+                .font(.inter(13))
+                .foregroundStyle(Theme.textMuted)
+
+            HStack(spacing: 12) {
+                Button {
+                    exportData()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 12))
+                        Text("Export Backup")
+                            .font(.inter(13, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Theme.successColor, in: RoundedRectangle(cornerRadius: 8))
+                }
+
+                Button {
+                    showImportPicker = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 12))
+                        Text("Import Backup")
+                            .font(.inter(13, weight: .semibold))
+                    }
+                    .foregroundStyle(Theme.accent)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.successColor.opacity(0.04), in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+        .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.successColor.opacity(0.2), lineWidth: 1))
+    }
+
+    private func exportData() {
+        do {
+            let data = try BackupService.exportAll()
+            let tempDir = FileManager.default.temporaryDirectory
+            let fileURL = tempDir.appendingPathComponent("dumpster-backup.json")
+            try data.write(to: fileURL)
+            exportURL = fileURL
+            showExportShare = true
+        } catch {
+            importMessage = "Export failed: \(error.localizedDescription)"
+            showImportAlert = true
+        }
     }
 
     // MARK: - AI Section
@@ -307,4 +414,14 @@ struct GuideView: View {
                 .foregroundStyle(Theme.textSecondary)
         }
     }
+}
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
