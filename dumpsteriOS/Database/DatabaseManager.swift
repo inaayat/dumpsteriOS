@@ -107,6 +107,24 @@ final class DatabaseManager: Sendable {
             }
         }
 
+        migrator.registerMigration("v4_multiTagDocs") { db in
+            try db.create(table: "master_doc_tags") { t in
+                t.column("docId", .text).notNull().references("master_docs", onDelete: .cascade)
+                t.column("tagId", .text).notNull().references("tags", onDelete: .cascade)
+                t.primaryKey(["docId", "tagId"])
+            }
+            try db.create(index: "idx_doc_tags_doc", on: "master_doc_tags", columns: ["docId"])
+            try db.create(index: "idx_doc_tags_tag", on: "master_doc_tags", columns: ["tagId"])
+
+            // Migrate existing master_docs.tagId into junction table
+            let rows = try Row.fetchAll(db, sql: "SELECT id, tagId FROM master_docs")
+            for row in rows {
+                let docId: String = row["id"]
+                let tagId: String = row["tagId"]
+                try db.execute(sql: "INSERT OR IGNORE INTO master_doc_tags (docId, tagId) VALUES (?, ?)", arguments: [docId, tagId])
+            }
+        }
+
         return migrator
     }
 }

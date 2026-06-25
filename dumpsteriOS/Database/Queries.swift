@@ -377,7 +377,13 @@ struct Queries {
 
     static func getMasterDoc(tagId: String) throws -> MasterDoc? {
         try db.read { db in
-            try MasterDoc.filter(MasterDoc.Columns.tagId == tagId).fetchOne(db)
+            // Check junction table first
+            if let docId = try String.fetchOne(db, sql: "SELECT docId FROM master_doc_tags WHERE tagId = ? LIMIT 1", arguments: [tagId]),
+               let doc = try MasterDoc.filter(MasterDoc.Columns.id == docId).fetchOne(db) {
+                return doc
+            }
+            // Fallback to legacy tagId column
+            return try MasterDoc.filter(MasterDoc.Columns.tagId == tagId).fetchOne(db)
         }
     }
 
@@ -389,7 +395,15 @@ struct Queries {
 
     static func upsertMasterDoc(tagId: String, content: String, title: String) throws {
         try db.write { db in
-            if var existing = try MasterDoc.filter(MasterDoc.Columns.tagId == tagId).fetchOne(db) {
+            // First check junction table for existing doc
+            if let docId = try String.fetchOne(db, sql: "SELECT docId FROM master_doc_tags WHERE tagId = ? LIMIT 1", arguments: [tagId]),
+               var existing = try MasterDoc.filter(MasterDoc.Columns.id == docId).fetchOne(db) {
+                existing.content = content
+                existing.title = title
+                existing.updatedAt = Date()
+                try existing.update(db)
+            } else if var existing = try MasterDoc.filter(MasterDoc.Columns.tagId == tagId).fetchOne(db) {
+                // Fallback to legacy tagId column
                 existing.content = content
                 existing.title = title
                 existing.updatedAt = Date()
@@ -397,6 +411,7 @@ struct Queries {
             } else {
                 let doc = MasterDoc(id: UUID().uuidString, tagId: tagId, title: title, content: content, createdAt: Date(), updatedAt: Date())
                 try doc.insert(db)
+                try db.execute(sql: "INSERT OR IGNORE INTO master_doc_tags (docId, tagId) VALUES (?, ?)", arguments: [doc.id, tagId])
             }
         }
     }
@@ -404,6 +419,96 @@ struct Queries {
     static func deleteMasterDoc(id: String) throws {
         try db.write { db in
             _ = try MasterDoc.filter(MasterDoc.Columns.id == id).deleteAll(db)
+        }
+    }
+
+    // MARK: - Master Doc Tags (Multi-Tag Support)
+
+    static func getTagsForDoc(docId: String) throws -> [Tag] {
+        try db.read { db in
+            try Tag.fetchAll(db, sql: """
+                SELECT t.* FROM tags t
+                JOIN master_doc_tags mdt ON mdt.tagId = t.id
+                WHERE mdt.docId = ?
+                ORDER BY t.name ASC
+                """, arguments: [docId])
+        }
+    }
+
+    static func getDocForTag(tagId: String) throws -> MasterDoc? {
+        try db.read { db in
+            try MasterDoc.fetchOne(db, sql: """
+                SELECT md.* FROM master_docs md
+                JOIN master_doc_tags mdt ON mdt.docId = md.id
+                WHERE mdt.tagId = ?
+                LIMIT 1
+                """, arguments: [tagId])
+        }
+    }
+
+    static func addTagToDoc(docId: String, tagId: String) throws {
+        try db.write { db in
+            try db.execute(sql: "INSERT OR IGNORE INTO master_doc_tags (docId, tagId) VALUES (?, ?)", arguments: [docId, tagId])
+        }
+    }
+
+    static func removeTagFromDoc(docId: String, tagId: String) throws {
+        try db.write { db in
+            try db.execute(sql: "DELETE FROM master_doc_tags WHERE docId = ? AND tagId = ?", arguments: [docId, tagId])
+        }
+    }
+
+    static func isTagAssignedToDoc(tagId: String) throws -> Bool {
+        try db.read { db in
+            let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM master_doc_tags WHERE tagId = ?", arguments: [tagId]) ?? 0
+            return count > 0
+        }
+    }
+
+    static func createMasterDoc(title: String, tagIds: [String]) throws -> MasterDoc {
+        try db.write { db in
+            let doc = MasterDoc(id: UUID().uuidString, tagId: tagIds.first ?? "", title: title, content: "", createdAt: Date(), updatedAt: Date())
+            try doc.insert(db)
+            for tagId in tagIds {
+                try db.execute(sql: "INSERT OR IGNORE INTO master_doc_tags (docId, tagId) VALUES (?, ?)", arguments: [doc.id, tagId])
+            }
+            return doc
+        }
+    }
+
+    static func getUnincorporatedItemsForDoc(docId: String) throws -> [Item] {
+        try db.read { db in
+            try Item.fetchAll(db, sql: """
+                SELECT DISTINCT i.* FROM items i
+                JOIN item_tags it ON it.itemId = i.id
+                JOIN master_doc_tags mdt ON mdt.tagId = it.tagId
+                WHERE mdt.docId = ? AND i.incorporatedIntoDoc = 0
+                ORDER BY i.createdAt DESC
+                """, arguments: [docId])
+        }
+    }
+
+    static func getAllItemsForDoc(docId: String, category: Category? = nil) throws -> [Item] {
+        try db.read { db in
+            var sql = """
+                SELECT DISTINCT i.* FROM items i
+                JOIN item_tags it ON it.itemId = i.id
+                JOIN master_doc_tags mdt ON mdt.tagId = it.tagId
+                WHERE mdt.docId = ?
+                """
+            var args: [DatabaseValueConvertible] = [docId]
+            if let category {
+                sql += " AND i.category = ?"
+                args.append(category.rawValue)
+            }
+            sql += " ORDER BY i.createdAt DESC"
+            return try Item.fetchAll(db, sql: sql, arguments: StatementArguments(args))
+        }
+    }
+
+    static func markItemIncorporated(id: String) throws {
+        try db.write { db in
+            try db.execute(sql: "UPDATE items SET incorporatedIntoDoc = 1 WHERE id = ?", arguments: [id])
         }
     }
 

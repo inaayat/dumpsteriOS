@@ -957,6 +957,13 @@ private enum MarkdownToRTF {
 
 // MARK: - MasterDocEditorView
 
+// MARK: - Inbox Tab Enum
+
+private enum DocTab: String, CaseIterable {
+    case inbox = "Inbox"
+    case allItems = "All Items"
+}
+
 struct MasterDocEditorView: View {
     let doc: MasterDoc
 
@@ -966,8 +973,16 @@ struct MasterDocEditorView: View {
     @State private var editedTitle = ""
     @State private var textViewRef: NotesTextView? = nil
     @State private var isSynthesizing = false
-    @State private var synthesizedPreview: String? = nil
     @State private var aiError: String? = nil
+    @State private var docTags: [Tag] = []
+    @State private var showTagPicker = false
+    @State private var selectedTab: DocTab = .inbox
+    @State private var inboxItems: [Item] = []
+    @State private var allItems: [Item] = []
+    @State private var categoryFilter: Category? = nil
+    @State private var placementItem: Item? = nil
+    @State private var placementHeading: String? = nil
+    @State private var showPlacementPreview = false
 
     private var aiAvailable: Bool {
         if #available(iOS 26.0, *) { return AIService.isAvailable }
@@ -976,23 +991,25 @@ struct MasterDocEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Tag row
+            tagRow
+
             if isEditingTitle {
                 titleEditBar
             }
 
+            // Inbox / All Items tabs
+            itemsSection
+
             if isSynthesizing {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("AI is organizing the doc...")
+                    Text("Sorting items into doc...")
                         .font(.inter(12)).foregroundStyle(Theme.textMuted)
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity)
                 .background(Theme.accent.opacity(0.06))
-            }
-
-            if let preview = synthesizedPreview {
-                synthesizePreviewBar(preview)
             }
 
             if let err = aiError {
@@ -1020,16 +1037,6 @@ struct MasterDocEditorView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 14) {
-                    if aiAvailable {
-                        Button { synthesize() } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "sparkles").font(.system(size: 12))
-                                Text("Sort Trash").font(.inter(12, weight: .semibold))
-                            }
-                            .foregroundStyle(Theme.accent)
-                        }
-                        .disabled(isSynthesizing || content.isEmpty)
-                    }
                     Button {
                         if isEditingTitle { commitTitleEdit() }
                         else { editedTitle = title; isEditingTitle = true }
@@ -1040,9 +1047,210 @@ struct MasterDocEditorView: View {
                 }
             }
         }
+        .sheet(isPresented: $showTagPicker) {
+            DocTagPickerView(docId: doc.id, currentTagIds: Set(docTags.map(\.id))) { reload() }
+        }
+        .sheet(isPresented: $showPlacementPreview) {
+            if let item = placementItem {
+                PlacementPreviewSheet(item: item, suggestedHeading: placementHeading ?? "Uncategorized", content: content) { heading in
+                    insertItemUnderHeading(item: item, heading: heading)
+                }
+            }
+        }
         .onAppear {
             content = doc.content
             title = doc.title
+            reload()
+        }
+    }
+
+    // MARK: - Tag Row
+
+    private var tagRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(docTags) { tag in
+                    HStack(spacing: 4) {
+                        Text("#\(tag.name)")
+                            .font(.inter(12, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                        Button {
+                            try? Queries.removeTagFromDoc(docId: doc.id, tagId: tag.id)
+                            reload()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Theme.accent.opacity(0.1), in: Capsule())
+                }
+                Button {
+                    showTagPicker = true
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "plus").font(.system(size: 9, weight: .bold))
+                        Text("tag").font(.inter(11))
+                    }
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Theme.cardAlt, in: Capsule())
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+        }
+        .background(Theme.cardBg)
+        .overlay(Rectangle().fill(Theme.border).frame(height: 0.5), alignment: .bottom)
+    }
+
+    // MARK: - Items Section (Inbox / All Items)
+
+    private var itemsSection: some View {
+        VStack(spacing: 0) {
+            // Tab picker
+            HStack(spacing: 0) {
+                ForEach(DocTab.allCases, id: \.self) { tab in
+                    Button {
+                        selectedTab = tab
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(tab.rawValue)
+                                .font(.inter(12, weight: selectedTab == tab ? .semibold : .regular))
+                            if tab == .inbox && !inboxItems.isEmpty {
+                                Text("(\(inboxItems.count))")
+                                    .font(.inter(10, weight: .semibold))
+                                    .foregroundStyle(Theme.accent)
+                            }
+                        }
+                        .foregroundStyle(selectedTab == tab ? Theme.accent : Theme.textMuted)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                    }
+                }
+                Spacer()
+                if selectedTab == .inbox && !inboxItems.isEmpty && aiAvailable {
+                    Button { sortTrash() } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles").font(.system(size: 10))
+                            Text("Sort Trash").font(.inter(11, weight: .semibold))
+                        }
+                        .foregroundStyle(Theme.accent)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Theme.accent.opacity(0.08), in: Capsule())
+                    }
+                    .disabled(isSynthesizing)
+                    .padding(.trailing, 12)
+                }
+            }
+            .padding(.leading, 12)
+            .background(Theme.cardBg)
+            .overlay(Rectangle().fill(Theme.border).frame(height: 0.5), alignment: .bottom)
+
+            // Content
+            if selectedTab == .inbox {
+                inboxContent
+            } else {
+                allItemsContent
+            }
+        }
+    }
+
+    private var inboxContent: some View {
+        Group {
+            if inboxItems.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle").font(.system(size: 12)).foregroundStyle(Theme.successColor)
+                    Text("Inbox empty — all items incorporated")
+                        .font(.inter(12)).foregroundStyle(Theme.textMuted)
+                }
+                .padding(12)
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(inboxItems) { item in
+                            HStack(spacing: 8) {
+                                Image(systemName: item.category.icon)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Theme.categoryColor(item.category).opacity(0.6))
+                                    .frame(width: 16)
+                                Text(item.text)
+                                    .font(.inter(13))
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .lineLimit(2)
+                                Spacer()
+                                Button { addItemToDoc(item) } label: {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundStyle(Theme.accent)
+                                }
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            Divider().padding(.leading, 38)
+                        }
+                    }
+                }
+                .frame(maxHeight: 160)
+            }
+        }
+    }
+
+    private var allItemsContent: some View {
+        VStack(spacing: 0) {
+            // Filter chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    filterChip("All", selected: categoryFilter == nil) { categoryFilter = nil; reloadAllItems() }
+                    filterChip("Actions", selected: categoryFilter == .action) { categoryFilter = .action; reloadAllItems() }
+                    filterChip("Brainstorms", selected: categoryFilter == .brainstorm) { categoryFilter = .brainstorm; reloadAllItems() }
+                    filterChip("Resources", selected: categoryFilter == .resource) { categoryFilter = .resource; reloadAllItems() }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+            }
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(allItems) { item in
+                        HStack(spacing: 8) {
+                            Image(systemName: item.category.icon)
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.categoryColor(item.category).opacity(0.6))
+                                .frame(width: 16)
+                            Text(item.text)
+                                .font(.inter(13))
+                                .foregroundStyle(Theme.textPrimary)
+                                .lineLimit(2)
+                            Spacer()
+                            if item.incorporatedIntoDoc {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(Theme.successColor.opacity(0.5))
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        Divider().padding(.leading, 38)
+                    }
+                }
+            }
+            .frame(maxHeight: 160)
+        }
+    }
+
+    private func filterChip(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.inter(11, weight: selected ? .semibold : .regular))
+                .foregroundStyle(selected ? .white : Theme.textMuted)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(selected ? Theme.accent : Theme.cardAlt, in: Capsule())
         }
     }
 
@@ -1074,69 +1282,90 @@ struct MasterDocEditorView: View {
         isEditingTitle = false
     }
 
-    // MARK: - AI Synthesize
+    // MARK: - Add Item to Doc
 
-    @ViewBuilder
-    private func synthesizePreviewBar(_ preview: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "sparkles").font(.system(size: 11)).foregroundStyle(Theme.successColor)
-                Text("AI Sorted (preview)")
-                    .font(.inter(11, weight: .semibold)).foregroundStyle(Theme.successColor)
-                Spacer()
-            }
-            ScrollView {
-                SynthesizePreviewText(markdown: preview)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxHeight: 180)
-            .padding(10)
-            .background(Theme.successColor.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+    private func addItemToDoc(_ item: Item) {
+        guard aiAvailable else {
+            insertItemUnderHeading(item: item, heading: "General")
+            return
+        }
+        placementItem = item
+        placementHeading = nil
 
-            HStack(spacing: 12) {
-                Button("Accept") {
-                    content = MarkdownToRTF.convert(preview)
-                    synthesizedPreview = nil
+        Task {
+            if #available(iOS 26.0, *) {
+                let headings = content.components(separatedBy: "\n")
+                    .filter { $0.hasPrefix("##") || $0.hasPrefix("# ") }
+                    .map { $0.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces) }
+
+                if headings.isEmpty {
+                    await MainActor.run {
+                        placementHeading = "General"
+                        showPlacementPreview = true
+                    }
+                    return
                 }
-                .font(.inter(12, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14).padding(.vertical, 7)
-                .background(Theme.successColor, in: Capsule())
 
-                Button("Dismiss") { synthesizedPreview = nil }
-                    .font(.inter(12)).foregroundStyle(Theme.textMuted)
+                do {
+                    let session = LanguageModelSession(instructions: "You categorize a note under an existing heading. Respond with ONLY the heading name, nothing else.")
+                    let prompt = "HEADINGS:\n\(headings.joined(separator: "\n"))\n\nNOTE: \(item.text)\n\nWhich heading does this belong under? Respond with just the heading name, or 'NEW: [name]' if none fit."
+                    let response = try await session.respond(to: prompt)
+                    let suggested = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                    await MainActor.run {
+                        placementHeading = suggested.hasPrefix("NEW: ") ? String(suggested.dropFirst(5)) : suggested
+                        showPlacementPreview = true
+                    }
+                } catch {
+                    await MainActor.run {
+                        placementHeading = "General"
+                        showPlacementPreview = true
+                    }
+                }
             }
         }
-        .padding(14)
-        .background(Theme.cardBg)
-        .overlay(Rectangle().fill(Theme.border).frame(height: 0.5), alignment: .bottom)
     }
 
-    private func synthesize() {
+    private func insertItemUnderHeading(item: Item, heading: String) {
+        let lines = content.components(separatedBy: "\n")
+        let headingIndex = lines.firstIndex { line in
+            let clean = line.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces)
+            return clean.lowercased() == heading.lowercased()
+        }
+
+        if let idx = headingIndex {
+            var insertAt = idx + 1
+            while insertAt < lines.count && !lines[insertAt].hasPrefix("#") {
+                insertAt += 1
+            }
+            var mutableLines = lines
+            mutableLines.insert("• \(item.text)", at: insertAt)
+            content = mutableLines.joined(separator: "\n")
+        } else {
+            content += content.isEmpty ? "## \(heading)\n• \(item.text)" : "\n\n## \(heading)\n• \(item.text)"
+        }
+
+        try? Queries.markItemIncorporated(id: item.id)
+        reload()
+    }
+
+    // MARK: - Sort Trash (Batch)
+
+    private func sortTrash() {
         guard #available(iOS 26.0, *) else { return }
         isSynthesizing = true
         aiError = nil
 
         Task {
             do {
-                // Gather bullets from dumps tagged with this doc's tag
-                var bulletsStr = content
-                if let tag = try? Queries.getTag(id: doc.tagId) {
-                    let allDumps = (try? Queries.getAllDumps()) ?? []
-                    var bulletTexts: [String] = []
-                    for dump in allDumps {
-                        let bullets = DumpBullet.parse(from: dump.content)
-                        for bullet in bullets where bullet.tags.contains(tag.name.lowercased()) {
-                            bulletTexts.append(bullet.text)
-                        }
-                    }
-                    if !bulletTexts.isEmpty { bulletsStr = bulletTexts.joined(separator: "\n") }
-                }
-
-                let result = try await AIService.synthesizeMasterDoc(existingContent: content, bullets: bulletsStr)
+                let bulletTexts = inboxItems.map(\.text)
+                let result = try await AIService.insertBulletsIntoDoc(existingContent: content, bullets: bulletTexts)
                 await MainActor.run {
-                    synthesizedPreview = result
+                    content = result
+                    for item in inboxItems {
+                        try? Queries.markItemIncorporated(id: item.id)
+                    }
                     isSynthesizing = false
+                    reload()
                 }
             } catch {
                 await MainActor.run {
@@ -1145,5 +1374,196 @@ struct MasterDocEditorView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Data Loading
+
+    private func reload() {
+        docTags = (try? Queries.getTagsForDoc(docId: doc.id)) ?? []
+        inboxItems = (try? Queries.getUnincorporatedItemsForDoc(docId: doc.id)) ?? []
+        reloadAllItems()
+    }
+
+    private func reloadAllItems() {
+        allItems = (try? Queries.getAllItemsForDoc(docId: doc.id, category: categoryFilter)) ?? []
+    }
+}
+
+// MARK: - Tag Picker for Docs
+
+struct DocTagPickerView: View {
+    let docId: String
+    let currentTagIds: Set<String>
+    var onDone: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var allTags: [Tag] = []
+    @State private var assignedTagIds: Set<String> = []
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                FlowLayout(spacing: 8) {
+                    ForEach(allTags) { tag in
+                        let isCurrent = currentTagIds.contains(tag.id)
+                        let isOtherDoc = assignedTagIds.contains(tag.id) && !isCurrent
+
+                        Button {
+                            guard !isOtherDoc else { return }
+                            if isCurrent {
+                                try? Queries.removeTagFromDoc(docId: docId, tagId: tag.id)
+                            } else {
+                                try? Queries.addTagToDoc(docId: docId, tagId: tag.id)
+                            }
+                            onDone()
+                            dismiss()
+                        } label: {
+                            Text("#\(tag.name)")
+                                .font(.inter(13, weight: isCurrent ? .semibold : .regular))
+                                .foregroundStyle(isOtherDoc ? Theme.textMuted.opacity(0.4) : (isCurrent ? .white : Theme.accent))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(
+                                    isCurrent ? Theme.accent : (isOtherDoc ? Theme.cardAlt : Theme.accent.opacity(0.08)),
+                                    in: RoundedRectangle(cornerRadius: 8)
+                                )
+                        }
+                        .disabled(isOtherDoc)
+                    }
+                }
+                .padding(20)
+            }
+            .background(Theme.canvas)
+            .navigationTitle("Add Tag")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .onAppear {
+                allTags = (try? Queries.getAllTags()) ?? []
+                assignedTagIds = Set(allTags.compactMap { tag in
+                    (try? Queries.isTagAssignedToDoc(tagId: tag.id)) == true ? tag.id : nil
+                })
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+// MARK: - Placement Preview
+
+struct PlacementPreviewSheet: View {
+    let item: Item
+    let suggestedHeading: String
+    let content: String
+    var onConfirm: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedHeading: String = ""
+    @State private var showPicker = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Item")
+                        .font(.inter(11, weight: .semibold))
+                        .foregroundStyle(Theme.textMuted)
+                    Text(item.text)
+                        .font(.inter(14))
+                        .foregroundStyle(Theme.textPrimary)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Will be placed under")
+                        .font(.inter(11, weight: .semibold))
+                        .foregroundStyle(Theme.textMuted)
+                    HStack {
+                        Text("→ \(selectedHeading)")
+                            .font(.inter(15, weight: .medium))
+                            .foregroundStyle(Theme.successColor)
+                        Spacer()
+                        Button("Change") { showPicker = true }
+                            .font(.inter(12, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(20)
+            .background(Theme.canvas)
+            .navigationTitle("Placement Preview")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        onConfirm(selectedHeading)
+                        dismiss()
+                    }
+                    .font(.inter(14, weight: .semibold))
+                }
+            }
+            .sheet(isPresented: $showPicker) {
+                HeadingPickerView(content: content, selected: $selectedHeading)
+            }
+            .onAppear { selectedHeading = suggestedHeading }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+struct HeadingPickerView: View {
+    let content: String
+    @Binding var selected: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var newHeading = ""
+
+    private var headings: [String] {
+        content.components(separatedBy: "\n")
+            .filter { $0.hasPrefix("##") || $0.hasPrefix("# ") }
+            .map { $0.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Existing Headings") {
+                    ForEach(headings, id: \.self) { heading in
+                        Button {
+                            selected = heading
+                            dismiss()
+                        } label: {
+                            HStack {
+                                Text(heading).foregroundStyle(Theme.textPrimary)
+                                Spacer()
+                                if selected == heading {
+                                    Image(systemName: "checkmark").foregroundStyle(Theme.accent)
+                                }
+                            }
+                        }
+                    }
+                }
+                Section("New Heading") {
+                    HStack {
+                        TextField("Type new heading", text: $newHeading)
+                        Button("Use") {
+                            guard !newHeading.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                            selected = newHeading.trimmingCharacters(in: .whitespaces)
+                            dismiss()
+                        }
+                        .disabled(newHeading.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+            }
+            .navigationTitle("Choose Heading")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .presentationDetents([.medium])
     }
 }

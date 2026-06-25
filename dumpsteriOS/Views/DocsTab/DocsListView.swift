@@ -3,7 +3,8 @@ import UIKit
 
 struct DocsListView: View {
     @Bindable var appState: AppState
-    @State private var docs: [(doc: MasterDoc, tag: Tag?)] = []
+    @State private var docs: [(doc: MasterDoc, tags: [Tag])] = []
+    @State private var showNewDoc = false
 
     var body: some View {
         List {
@@ -11,12 +12,12 @@ struct DocsListView: View {
                 ContentUnavailableView {
                     Label("No Documents", systemImage: "doc.text")
                 } description: {
-                    Text("Create a doc from any tag, or use #save in your daily dump to append to a tag's document.")
+                    Text("Tap + to create a doc, or use #save in your daily dump.")
                 }
             } else {
                 ForEach(docs, id: \.doc.id) { entry in
                     NavigationLink(value: entry.doc) {
-                        docRow(entry.doc, tag: entry.tag)
+                        docRow(entry.doc, tags: entry.tags)
                     }
                 }
                 .onDelete { indexSet in
@@ -32,19 +33,36 @@ struct DocsListView: View {
         .navigationDestination(for: MasterDoc.self) { doc in
             MasterDocEditorView(doc: doc)
         }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showNewDoc = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .sheet(isPresented: $showNewDoc) {
+            NewDocView { _ in reload() }
+        }
         .onAppear { reload() }
     }
 
-    private func docRow(_ doc: MasterDoc, tag: Tag?) -> some View {
+    private func docRow(_ doc: MasterDoc, tags: [Tag]) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(doc.title)
                 .font(.inter(15, weight: .medium))
                 .foregroundStyle(Theme.textPrimary)
-            HStack(spacing: 8) {
-                if let tag {
+            HStack(spacing: 6) {
+                ForEach(tags.prefix(3)) { tag in
                     Text("#\(tag.name)")
                         .font(.inter(11))
                         .foregroundStyle(Theme.accent)
+                }
+                if tags.count > 3 {
+                    Text("+\(tags.count - 3)")
+                        .font(.inter(10))
+                        .foregroundStyle(Theme.textMuted)
                 }
                 Text(doc.updatedAt.formatted(.dateTime.month(.abbreviated).day()))
                     .font(.inter(11))
@@ -75,8 +93,8 @@ struct DocsListView: View {
     private func reload() {
         let allDocs = (try? Queries.getAllMasterDocs()) ?? []
         docs = allDocs.map { doc in
-            let tag = try? Queries.getTag(id: doc.tagId)
-            return (doc: doc, tag: tag)
+            let tags = (try? Queries.getTagsForDoc(docId: doc.id)) ?? []
+            return (doc: doc, tags: tags)
         }
     }
 }

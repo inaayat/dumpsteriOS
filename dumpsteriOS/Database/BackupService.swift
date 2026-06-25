@@ -8,6 +8,7 @@ struct AppBackup: Codable {
     var itemTags: [ItemTag]
     var dailyDumps: [DailyDump]
     var masterDocs: [MasterDoc]
+    var masterDocTags: [MasterDocTag]?
     var itemLinks: [ItemLink]
     var tagRelationships: [TagRelationship]
     var hiddenBullets: [HiddenBullet]
@@ -26,6 +27,7 @@ enum BackupService {
                 itemTags: try ItemTag.fetchAll(db),
                 dailyDumps: try DailyDump.fetchAll(db),
                 masterDocs: try MasterDoc.fetchAll(db),
+                masterDocTags: try MasterDocTag.fetchAll(db),
                 itemLinks: try ItemLink.fetchAll(db),
                 tagRelationships: try TagRelationship.fetchAll(db),
                 hiddenBullets: try HiddenBullet.fetchAll(db)
@@ -47,6 +49,7 @@ enum BackupService {
 
         try db.write { db in
             // Clear existing data
+            try MasterDocTag.deleteAll(db)
             try Item.deleteAll(db)
             try Tag.deleteAll(db)
             try ItemTag.deleteAll(db)
@@ -62,6 +65,9 @@ enum BackupService {
             for row in backup.itemTags { try row.insert(db) }
             for row in backup.dailyDumps { try row.insert(db) }
             for row in backup.masterDocs { try row.insert(db) }
+            if let docTags = backup.masterDocTags {
+                for row in docTags { try row.insert(db) }
+            }
             for row in backup.itemLinks { try row.insert(db) }
             for row in backup.tagRelationships { try row.insert(db) }
             for row in backup.hiddenBullets { try row.insert(db) }
