@@ -57,9 +57,27 @@ struct AIService {
             Return ONLY the sorted document — no preamble, no commentary.
             """)
 
+        // On-device models have ~4K token context. Limit input to ~6000 chars.
+        let maxChars = 6000
+        var content = existingContent
+        var bulletText = bullets
+
+        let totalLength = content.count + bulletText.count
+        if totalLength > maxChars {
+            // Prioritize bullets (the new content to sort), trim existing
+            let bulletBudget = min(bulletText.count, maxChars / 2)
+            let contentBudget = maxChars - bulletBudget
+            if content.count > contentBudget {
+                content = String(content.prefix(contentBudget)) + "\n[...truncated]"
+            }
+            if bulletText.count > bulletBudget {
+                bulletText = String(bulletText.prefix(bulletBudget))
+            }
+        }
+
         var prompt = ""
-        if !existingContent.isEmpty { prompt += "EXISTING DOCUMENT:\n\(existingContent)\n\n" }
-        prompt += "BULLETS TO INTEGRATE:\n\(bullets)"
+        if !content.isEmpty { prompt += "EXISTING DOCUMENT:\n\(content)\n\n" }
+        prompt += "BULLETS TO INTEGRATE:\n\(bulletText)"
 
         let response = try await session.respond(to: prompt)
         return response.content
