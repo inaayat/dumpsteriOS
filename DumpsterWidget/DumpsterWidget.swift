@@ -1,6 +1,5 @@
 import WidgetKit
 import SwiftUI
-import AppIntents
 
 struct VoiceBulletEntry: TimelineEntry {
     let date: Date
@@ -83,7 +82,6 @@ struct DumpsterWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: VoiceBulletProvider()) { entry in
             DumpsterWidgetView(entry: entry)
-                .widgetURL(URL(string: "dumpster://voice-add"))
         }
         .configurationDisplayName("Voice Bullet")
         .description("Tap to add a voice bullet to your daily dump.")

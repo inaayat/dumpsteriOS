@@ -3,7 +3,7 @@ import Foundation
 enum VoiceTagProcessor {
 
     static func process(_ rawTranscription: String) -> String {
-        let existingTags = (try? Queries.getAllTags())?.map(\.name.lowercased()) ?? []
+        let existingTags = (try? Queries.getAllTags())?.map { $0.name.lowercased() } ?? []
         let magicTags: Set<String> = ["action", "brainstorm", "resource", "prio", "backlog", "save", "delete"]
 
         var result = rawTranscription

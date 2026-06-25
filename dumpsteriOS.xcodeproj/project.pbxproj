@@ -355,7 +355,6 @@
 				DEVELOPMENT_TEAM = 3N8DYH4A84;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Dumpster needs microphone access to record voice bullets.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Dumpster uses speech recognition to transcribe your voice into text bullets.";
@@ -387,7 +386,6 @@
 				DEVELOPMENT_TEAM = 3N8DYH4A84;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Dumpster needs microphone access to record voice bullets.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Dumpster uses speech recognition to transcribe your voice into text bullets.";

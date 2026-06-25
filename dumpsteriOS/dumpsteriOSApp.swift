@@ -9,11 +9,6 @@ struct dumpsteriOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .onOpenURL { url in
-                    if url.host == "voice-add" {
-                        VoiceCaptureCoordinator.shared.triggerCapture()
-                    }
-                }
         }
     }
 }
