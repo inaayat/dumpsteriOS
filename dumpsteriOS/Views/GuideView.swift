@@ -2,8 +2,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct GuideView: View {
-    @State private var showExportShare = false
-    @State private var exportURL: URL?
     @State private var showImportPicker = false
     @State private var importMessage: String?
     @State private var showImportAlert = false
@@ -182,11 +180,6 @@ struct GuideView: View {
         .background(Theme.canvas)
         .navigationTitle("Guide")
         .navigationBarTitleDisplayMode(.large)
-        .sheet(isPresented: $showExportShare) {
-            if let url = exportURL {
-                ShareSheet(items: [url])
-            }
-        }
         .fileImporter(isPresented: $showImportPicker, allowedContentTypes: [.json]) { result in
             switch result {
             case .success(let url):
@@ -273,8 +266,19 @@ struct GuideView: View {
             let tempDir = FileManager.default.temporaryDirectory
             let fileURL = tempDir.appendingPathComponent("dumpster-backup.json")
             try data.write(to: fileURL)
-            exportURL = fileURL
-            showExportShare = true
+
+            guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let window = scene.windows.first,
+                  let rootVC = window.rootViewController else { return }
+
+            let activityVC = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+            activityVC.popoverPresentationController?.sourceView = window
+            activityVC.popoverPresentationController?.sourceRect = CGRect(x: window.bounds.midX, y: window.bounds.midY, width: 0, height: 0)
+
+            // Find the topmost presented VC
+            var topVC = rootVC
+            while let presented = topVC.presentedViewController { topVC = presented }
+            topVC.present(activityVC, animated: true)
         } catch {
             importMessage = "Export failed: \(error.localizedDescription)"
             showImportAlert = true
@@ -416,12 +420,3 @@ struct GuideView: View {
     }
 }
 
-struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
