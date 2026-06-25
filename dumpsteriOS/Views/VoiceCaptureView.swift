@@ -225,8 +225,9 @@ struct VoiceCaptureView: View {
     // MARK: - Save
 
     private func saveBullet() {
-        let text = transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        let raw = transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
+        let text = VoiceTagProcessor.process(raw)
 
         guard let dump = try? Queries.getOrCreateTodayDump() else { return }
         let bulletLine = "• \(text)"
