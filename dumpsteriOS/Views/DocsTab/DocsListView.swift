@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct DocsListView: View {
     @Bindable var appState: AppState
@@ -49,14 +50,26 @@ struct DocsListView: View {
                     .font(.inter(11))
                     .foregroundStyle(Theme.textMuted)
             }
-            if !doc.content.isEmpty {
-                Text(doc.content.prefix(80) + (doc.content.count > 80 ? "..." : ""))
+            let preview = plainTextPreview(doc.content)
+            if !preview.isEmpty {
+                Text(preview)
                     .font(.inter(12))
                     .foregroundStyle(Theme.textMuted)
                     .lineLimit(2)
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private func plainTextPreview(_ content: String, maxLength: Int = 100) -> String {
+        var plain = content
+        if content.hasPrefix("{\\rtf"),
+           let data = content.data(using: .utf8),
+           let attrStr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+            plain = attrStr.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let trimmed = String(plain.prefix(maxLength))
+        return plain.count > maxLength ? trimmed + "..." : trimmed
     }
 
     private func reload() {
