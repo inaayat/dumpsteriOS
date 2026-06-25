@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var appState = AppState()
+    private var voiceCoordinator = VoiceCaptureCoordinator.shared
 
     var body: some View {
         TabView(selection: $appState.selectedTab) {
@@ -40,6 +41,12 @@ struct ContentView: View {
             _ = DatabaseManager.shared
             try? Queries.promoteDueSoonToHigh()
             appState.refreshCounts()
+        }
+        .sheet(isPresented: .init(
+            get: { voiceCoordinator.showVoiceCapture },
+            set: { voiceCoordinator.showVoiceCapture = $0 }
+        )) {
+            VoiceCaptureView()
         }
     }
 }
