@@ -199,6 +199,12 @@ struct DumpView: View {
                     .lineLimit(1...6)
                     .submitLabel(.done)
                     .onSubmit { addBullet() }
+                    .onChange(of: newBulletText) { _, newValue in
+                        if newValue.contains("\n") {
+                            newBulletText = newValue.replacingOccurrences(of: "\n", with: "")
+                            addBullet()
+                        }
+                    }
             }
             .padding(12)
             .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
