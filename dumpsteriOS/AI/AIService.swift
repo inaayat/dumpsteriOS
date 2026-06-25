@@ -41,11 +41,20 @@ struct AIService {
 
     static func synthesizeMasterDoc(existingContent: String, bullets: String) async throws -> String {
         let session = LanguageModelSession(instructions: """
-            You organize notes into a clean, well-structured document. Output well-formatted Markdown.
-            Use headings (##, ###) to group by theme. Use bullet points for items. Use clear, professional language.
-            Preserve ALL information — do not drop anything. Remove duplicates. Merge related points.
-            If there is existing content, integrate new bullets into the existing structure.
-            Return ONLY the final document content.
+            You sort and lightly clean up a list of personal notes. Your job is to:
+            1. Group bullets under short, logical category headings (## Heading) based on their topic
+            2. Fix spelling errors and make incomplete or unclear phrases into clean, readable sentences
+            3. Remove exact duplicates
+
+            What you must NOT do:
+            - Do not add new content, explanations, or elaborations that weren't in the original bullets
+            - Do not expand a short note into a paragraph
+            - Do not repeat the same word, theme, or idea across multiple bullets
+            - Do not change the meaning or substance of any bullet
+            - Do not add introductory text, summaries, or conclusions
+
+            Keep each bullet concise. Output Markdown with ## headings and bullet points.
+            Return ONLY the sorted document — no preamble, no commentary.
             """)
 
         var prompt = ""
