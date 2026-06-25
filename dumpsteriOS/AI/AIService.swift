@@ -150,6 +150,16 @@ struct AIService {
         return response.content
     }
 
+    // MARK: - Suggest Heading for Item
+
+    static func suggestHeading(for text: String, existingHeadings: [String]) async throws -> String {
+        let session = LanguageModelSession(instructions: "You categorize a note under an existing heading. Respond with ONLY the heading name, nothing else.")
+        let prompt = "HEADINGS:\n\(existingHeadings.joined(separator: "\n"))\n\nNOTE: \(text)\n\nWhich heading does this belong under? Respond with just the heading name, or 'NEW: [name]' if none fit."
+        let response = try await session.respond(to: prompt)
+        let suggested = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return suggested.hasPrefix("NEW: ") ? String(suggested.dropFirst(5)) : suggested
+    }
+
     // MARK: - Analyze Dump
 
     struct AnalyzeResult {

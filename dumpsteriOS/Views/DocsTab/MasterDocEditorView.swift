@@ -1286,7 +1286,9 @@ struct MasterDocEditorView: View {
 
     private func addItemToDoc(_ item: Item) {
         guard aiAvailable else {
-            insertItemUnderHeading(item: item, heading: "General")
+            placementItem = item
+            placementHeading = "General"
+            showPlacementPreview = true
             return
         }
         placementItem = item
@@ -1307,12 +1309,9 @@ struct MasterDocEditorView: View {
                 }
 
                 do {
-                    let session = LanguageModelSession(instructions: "You categorize a note under an existing heading. Respond with ONLY the heading name, nothing else.")
-                    let prompt = "HEADINGS:\n\(headings.joined(separator: "\n"))\n\nNOTE: \(item.text)\n\nWhich heading does this belong under? Respond with just the heading name, or 'NEW: [name]' if none fit."
-                    let response = try await session.respond(to: prompt)
-                    let suggested = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let suggested = try await AIService.suggestHeading(for: item.text, existingHeadings: headings)
                     await MainActor.run {
-                        placementHeading = suggested.hasPrefix("NEW: ") ? String(suggested.dropFirst(5)) : suggested
+                        placementHeading = suggested
                         showPlacementPreview = true
                     }
                 } catch {
