@@ -8,47 +8,16 @@
 
 /* Begin PBXBuildFile section */
 		DD48E6C72FE3A6FA00EAB092 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = DD48E6602FE3B00000EAB092 /* GRDB */; };
-		DD48E70D2FE4B00000EAB092 /* DumpsterWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = DD48E7022FE4B00000EAB092 /* DumpsterWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
-
-/* Begin PBXContainerItemProxy section */
-		DD48E70A2FE4B00000EAB092 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = DD48E6312FE3A34400EAB092 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = DD48E7032FE4B00000EAB092;
-			remoteInfo = DumpsterWidget;
-		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		DD48E70C2FE4B00000EAB092 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				DD48E70D2FE4B00000EAB092 /* DumpsterWidget.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		DD48E6392FE3A34400EAB092 /* dumpsteriOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = dumpsteriOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		DD48E7022FE4B00000EAB092 /* DumpsterWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DumpsterWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		DD48E63B2FE3A34400EAB092 /* dumpsteriOS */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = dumpsteriOS;
-			sourceTree = "<group>";
-		};
-		DD48E7012FE4B00000EAB092 /* DumpsterWidget */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = DumpsterWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -62,13 +31,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		DD48E7052FE4B00000EAB092 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -76,7 +38,6 @@
 			isa = PBXGroup;
 			children = (
 				DD48E63B2FE3A34400EAB092 /* dumpsteriOS */,
-				DD48E7012FE4B00000EAB092 /* DumpsterWidget */,
 				DD48E63A2FE3A34400EAB092 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -85,7 +46,6 @@
 			isa = PBXGroup;
 			children = (
 				DD48E6392FE3A34400EAB092 /* dumpsteriOS.app */,
-				DD48E7022FE4B00000EAB092 /* DumpsterWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -100,12 +60,10 @@
 				DD48E6352FE3A34400EAB092 /* Sources */,
 				DD48E6362FE3A34400EAB092 /* Frameworks */,
 				DD48E6372FE3A34400EAB092 /* Resources */,
-				DD48E70C2FE4B00000EAB092 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				DD48E70B2FE4B00000EAB092 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				DD48E63B2FE3A34400EAB092 /* dumpsteriOS */,
@@ -118,26 +76,6 @@
 			productReference = DD48E6392FE3A34400EAB092 /* dumpsteriOS.app */;
 			productType = "com.apple.product-type.application";
 		};
-		DD48E7032FE4B00000EAB092 /* DumpsterWidget */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = DD48E7072FE4B00000EAB092 /* Build configuration list for PBXNativeTarget "DumpsterWidget" */;
-			buildPhases = (
-				DD48E7042FE4B00000EAB092 /* Sources */,
-				DD48E7052FE4B00000EAB092 /* Frameworks */,
-				DD48E7062FE4B00000EAB092 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				DD48E7012FE4B00000EAB092 /* DumpsterWidget */,
-			);
-			name = DumpsterWidget;
-			productName = DumpsterWidget;
-			productReference = DD48E7022FE4B00000EAB092 /* DumpsterWidget.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -149,9 +87,6 @@
 				LastUpgradeCheck = 2650;
 				TargetAttributes = {
 					DD48E6382FE3A34400EAB092 = {
-						CreatedOnToolsVersion = 26.5;
-					};
-					DD48E7032FE4B00000EAB092 = {
 						CreatedOnToolsVersion = 26.5;
 					};
 				};
@@ -174,20 +109,12 @@
 			projectRoot = "";
 			targets = (
 				DD48E6382FE3A34400EAB092 /* dumpsteriOS */,
-				DD48E7032FE4B00000EAB092 /* DumpsterWidget */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		DD48E6372FE3A34400EAB092 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		DD48E7062FE4B00000EAB092 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -204,22 +131,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		DD48E7042FE4B00000EAB092 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		DD48E70B2FE4B00000EAB092 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = DD48E7032FE4B00000EAB092 /* DumpsterWidget */;
-			targetProxy = DD48E70A2FE4B00000EAB092 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		DD48E6422FE3A34500EAB092 /* Debug */ = {
@@ -407,54 +319,6 @@
 			};
 			name = Release;
 		};
-		DD48E7082FE4B00000EAB092 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 3N8DYH4A84;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = DumpsterWidget;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = inaayat.dumpsteriOS.DumpsterWidget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		DD48E7092FE4B00000EAB092 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 3N8DYH4A84;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = DumpsterWidget;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = inaayat.dumpsteriOS.DumpsterWidget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -472,15 +336,6 @@
 			buildConfigurations = (
 				DD48E6452FE3A34500EAB092 /* Debug */,
 				DD48E6462FE3A34500EAB092 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		DD48E7072FE4B00000EAB092 /* Build configuration list for PBXNativeTarget "DumpsterWidget" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				DD48E7082FE4B00000EAB092 /* Debug */,
-				DD48E7092FE4B00000EAB092 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
