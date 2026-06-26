@@ -1181,40 +1181,43 @@ struct MasterDocEditorView: View {
                 }
                 .padding(12)
             } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(inboxItems) { item in
-                            HStack(spacing: 8) {
-                                Image(systemName: item.category.icon)
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(Theme.categoryColor(item.category).opacity(0.6))
-                                    .frame(width: 16)
-                                Text(item.text)
-                                    .font(.inter(13))
-                                    .foregroundStyle(Theme.textPrimary)
-                                    .lineLimit(2)
-                                Spacer()
-                                Button {
-                                    try? Queries.dismissItemFromDoc(id: item.id)
-                                    reload()
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 16))
-                                        .foregroundStyle(Theme.textMuted.opacity(0.4))
-                                }
-                                Button { addItemToDoc(item) } label: {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.system(size: 18))
-                                        .foregroundStyle(Theme.accent)
-                                }
+                VStack(spacing: 0) {
+                    ForEach(inboxItems.prefix(8)) { item in
+                        HStack(spacing: 8) {
+                            Image(systemName: item.category.icon)
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.categoryColor(item.category).opacity(0.6))
+                                .frame(width: 16)
+                            Text(item.text)
+                                .font(.inter(13))
+                                .foregroundStyle(Theme.textPrimary)
+                                .lineLimit(1)
+                            Spacer()
+                            Button {
+                                try? Queries.dismissItemFromDoc(id: item.id)
+                                reload()
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(Theme.textMuted.opacity(0.4))
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            Divider().padding(.leading, 38)
+                            Button { addItemToDoc(item) } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(Theme.accent)
+                            }
                         }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        Divider().padding(.leading, 38)
+                    }
+                    if inboxItems.count > 8 {
+                        Text("+\(inboxItems.count - 8) more")
+                            .font(.inter(11))
+                            .foregroundStyle(Theme.textMuted)
+                            .padding(.vertical, 6)
                     }
                 }
-                .frame(maxHeight: 160)
             }
         }
     }
@@ -1348,39 +1351,108 @@ struct MasterDocEditorView: View {
     }
 
     private func insertItemUnderHeading(item: Item, heading: String) {
-        // Work in plain text for insertion logic
-        var plain = plainTextContent()
-        let lines = plain.components(separatedBy: "\n")
-        let headingIndex = lines.firstIndex { line in
-            let clean = line.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces)
-            return clean.lowercased() == heading.lowercased()
-        }
+        let attrStr = loadAsAttributedString()
+        let fullText = attrStr.string
+        let lines = fullText.components(separatedBy: "\n")
 
-        if let idx = headingIndex {
-            var insertAt = idx + 1
-            while insertAt < lines.count && !lines[insertAt].hasPrefix("#") {
-                insertAt += 1
+        // Find heading by looking for bold/large text matching the heading name
+        var headingLineEnd: Int? = nil
+        var searchPos = 0
+        for line in lines {
+            let lineEnd = searchPos + line.count
+            if line.trimmingCharacters(in: .whitespaces).lowercased() == heading.lowercased() {
+                // Check if this line has a heading-sized font
+                let range = NSRange(location: searchPos, length: line.count)
+                var isHeading = false
+                attrStr.enumerateAttribute(.font, in: range) { value, _, _ in
+                    if let font = value as? UIFont, font.pointSize >= 18 {
+                        isHeading = true
+                    }
+                }
+                if isHeading {
+                    headingLineEnd = lineEnd
+                    // Find end of this section (next heading or end)
+                    var nextLineStart = lineEnd + 1
+                    for nextLine in lines.dropFirst(lines.prefix(while: { _ in
+                        searchPos += 0; return false
+                    }).count) {
+                        _ = nextLine
+                    }
+                    // Find insertion point: after all content lines until next heading
+                    let remaining = lines.suffix(from: lines.firstIndex(where: { _ in false }) ?? lines.endIndex)
+                    _ = remaining
+                    break
+                }
             }
-            var mutableLines = lines
-            mutableLines.insert("• \(item.text)", at: insertAt)
-            plain = mutableLines.joined(separator: "\n")
-        } else {
-            plain += plain.isEmpty ? "## \(heading)\n• \(item.text)" : "\n\n## \(heading)\n• \(item.text)"
+            searchPos = lineEnd + 1
         }
 
-        // Convert back to RTF so headings render as formatted text
-        content = MarkdownToRTF.convert(plain)
+        // Simpler approach: find the heading text, then insert bullet after the section
+        let result = NSMutableAttributedString(attributedString: attrStr)
+        let headingFont = UIFont(name: "Inter-Bold", size: 22) ?? .boldSystemFont(ofSize: 22)
+        let bulletFont = UIFont(name: "Inter-Regular", size: 16) ?? .systemFont(ofSize: 16)
+        let textColor = UIColor(Theme.textPrimary)
+
+        let nsString = fullText as NSString
+        let headingRange = nsString.range(of: heading, options: .caseInsensitive)
+
+        if headingRange.location != NSNotFound {
+            // Find end of this section (next line with large font, or end of doc)
+            var insertLocation = headingRange.location + headingRange.length
+            let totalLength = result.length
+
+            // Move past newline after heading
+            if insertLocation < totalLength {
+                let nextChar = nsString.substring(with: NSRange(location: insertLocation, length: 1))
+                if nextChar == "\n" { insertLocation += 1 }
+            }
+
+            // Skip existing content until we hit another heading or end
+            while insertLocation < totalLength {
+                let charRange = NSRange(location: insertLocation, length: 1)
+                let char = nsString.substring(with: charRange)
+                if char == "\n" {
+                    let nextPos = insertLocation + 1
+                    if nextPos < totalLength {
+                        var nextFont: UIFont?
+                        result.enumerateAttribute(.font, in: NSRange(location: nextPos, length: 1)) { val, _, _ in
+                            nextFont = val as? UIFont
+                        }
+                        if let f = nextFont, f.pointSize >= 18 { break }
+                    }
+                }
+                insertLocation += 1
+            }
+
+            let bullet = NSAttributedString(string: "\n• \(item.text)", attributes: [.font: bulletFont, .foregroundColor: textColor])
+            result.insert(bullet, at: insertLocation)
+        } else {
+            // Heading doesn't exist — append new section
+            let newSection = NSMutableAttributedString()
+            newSection.append(NSAttributedString(string: "\n\n", attributes: [.font: bulletFont]))
+            newSection.append(NSAttributedString(string: heading, attributes: [.font: headingFont, .foregroundColor: textColor]))
+            newSection.append(NSAttributedString(string: "\n• \(item.text)", attributes: [.font: bulletFont, .foregroundColor: textColor]))
+            result.append(newSection)
+        }
+
+        // Save back as RTF
+        if let data = try? result.data(from: NSRange(location: 0, length: result.length),
+                                        documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]),
+           let rtf = String(data: data, encoding: .utf8) {
+            content = rtf
+        }
+
         try? Queries.markItemIncorporated(id: item.id)
         reload()
     }
 
-    private func plainTextContent() -> String {
+    private func loadAsAttributedString() -> NSAttributedString {
         if content.hasPrefix("{\\rtf"),
            let data = content.data(using: .utf8),
            let attrStr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
-            return attrStr.string
+            return attrStr
         }
-        return content
+        return NSAttributedString(string: content)
     }
 
     // MARK: - Sort Trash (Batch)
@@ -1728,15 +1800,48 @@ struct OutlineEditorView: View {
     }
 
     private func parseHeadings() {
-        let plain = plainText()
-        let lines = plain.components(separatedBy: "\n")
+        let attrStr: NSAttributedString
+        if content.hasPrefix("{\\rtf"),
+           let data = content.data(using: .utf8),
+           let parsed = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+            attrStr = parsed
+        } else {
+            // Plain text fallback — check for ## markers
+            let lines = content.components(separatedBy: "\n")
+            headings = lines.enumerated().compactMap { index, line in
+                if line.hasPrefix("### ") {
+                    return OutlineHeading(text: String(line.dropFirst(4)).trimmingCharacters(in: .whitespaces), level: 2, lineIndex: index)
+                } else if line.hasPrefix("## ") {
+                    return OutlineHeading(text: String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces), level: 1, lineIndex: index)
+                } else if line.hasPrefix("# ") {
+                    return OutlineHeading(text: String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces), level: 1, lineIndex: index)
+                }
+                return nil
+            }
+            return
+        }
+
+        // Parse RTF: find lines with large/bold fonts (headings)
+        let fullText = attrStr.string
+        let lines = fullText.components(separatedBy: "\n")
+        var charPos = 0
         headings = lines.enumerated().compactMap { index, line in
-            if line.hasPrefix("### ") {
-                return OutlineHeading(text: String(line.dropFirst(4)).trimmingCharacters(in: .whitespaces), level: 2, lineIndex: index)
-            } else if line.hasPrefix("## ") {
-                return OutlineHeading(text: String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces), level: 1, lineIndex: index)
-            } else if line.hasPrefix("# ") {
-                return OutlineHeading(text: String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces), level: 1, lineIndex: index)
+            defer { charPos += line.count + 1 }
+            guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+            guard charPos < attrStr.length else { return nil }
+
+            let checkLen = min(line.count, attrStr.length - charPos)
+            guard checkLen > 0 else { return nil }
+
+            var fontSize: CGFloat = 0
+            attrStr.enumerateAttribute(.font, in: NSRange(location: charPos, length: checkLen)) { val, _, _ in
+                if let font = val as? UIFont { fontSize = max(fontSize, font.pointSize) }
+            }
+
+            if fontSize >= 22 {
+                return OutlineHeading(text: line.trimmingCharacters(in: .whitespaces), level: 1, lineIndex: index)
+            } else if fontSize >= 18 && fontSize < 22 {
+                return OutlineHeading(text: line.trimmingCharacters(in: .whitespaces), level: 2, lineIndex: index)
             }
             return nil
         }
@@ -1745,28 +1850,41 @@ struct OutlineEditorView: View {
     private func addHeading() {
         let text = newHeadingText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
-        let prefix = newIsSubheading ? "### " : "## "
-        let headingLine = "\(prefix)\(text)"
 
-        // Work in plain text, then convert back to RTF
-        var plain = plainText()
-        if plain.isEmpty {
-            plain = headingLine
+        let headingFont: UIFont
+        if newIsSubheading {
+            headingFont = UIFont(name: "Inter-SemiBold", size: 18) ?? .systemFont(ofSize: 18, weight: .semibold)
         } else {
-            plain += "\n\n\(headingLine)"
+            headingFont = UIFont(name: "Inter-Bold", size: 22) ?? .boldSystemFont(ofSize: 22)
         }
-        content = MarkdownToRTF.convert(plain)
-        newHeadingText = ""
-        parseHeadings()
-    }
+        let textColor = UIColor(Theme.textPrimary)
 
-    private func plainText() -> String {
+        let result: NSMutableAttributedString
         if content.hasPrefix("{\\rtf"),
            let data = content.data(using: .utf8),
-           let attrStr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
-            return attrStr.string
+           let existing = try? NSMutableAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+            result = existing
+        } else {
+            let defaultFont = UIFont(name: "Inter-Regular", size: 16) ?? .systemFont(ofSize: 16)
+            result = NSMutableAttributedString(string: content, attributes: [.font: defaultFont, .foregroundColor: textColor])
         }
-        return content
+
+        let newHeading = NSMutableAttributedString()
+        if result.length > 0 {
+            newHeading.append(NSAttributedString(string: "\n\n"))
+        }
+        newHeading.append(NSAttributedString(string: text, attributes: [.font: headingFont, .foregroundColor: textColor]))
+
+        result.append(newHeading)
+
+        if let data = try? result.data(from: NSRange(location: 0, length: result.length),
+                                        documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]),
+           let rtf = String(data: data, encoding: .utf8) {
+            content = rtf
+        }
+
+        newHeadingText = ""
+        parseHeadings()
     }
 
     private func prepareDelete(_ heading: OutlineHeading) {
