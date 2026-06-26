@@ -61,7 +61,7 @@ class NotesTextView: UITextView {
     // MARK: Enter key handling
 
     func handleReturn() {
-        guard let storage = textStorage as? NSTextStorage else { return }
+        let storage = textStorage
         let cursorPos = selectedRange.location
         guard cursorPos > 0 else {
             insertText("\n")
@@ -1870,8 +1870,6 @@ struct OutlineEditorView: View {
         // Reorder sections to match new heading order
         var newSections: [(heading: String, content: [String])] = []
         for heading in reordered {
-            let prefix = heading.level == 2 ? "### " : "## "
-            let altPrefix = heading.level == 1 ? "# " : "## "
             if let idx = sections.firstIndex(where: { sec in
                 let clean = sec.heading.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces)
                 return clean.lowercased() == heading.text.lowercased()

@@ -286,7 +286,7 @@ struct Queries {
 
     static func getItemsGroupedByTag(category: Category? = nil, done: Bool = false, searchQuery: String? = nil) throws -> [(tag: Tag?, items: [Item])] {
         try db.read { db in
-            var baseSQL = "SELECT i.* FROM items i"
+            let baseSQL = "SELECT i.* FROM items i"
             var conditions: [String] = ["i.done = ?"]
             var args: [DatabaseValueConvertible] = [done]
 
