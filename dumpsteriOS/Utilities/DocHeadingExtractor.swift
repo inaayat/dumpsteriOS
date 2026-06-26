@@ -2,6 +2,7 @@ import UIKit
 
 enum DocHeadingExtractor {
     static func extractHeadings(from content: String) -> [String] {
+        // RTF fallback for legacy docs that haven't been migrated yet
         if content.hasPrefix("{\\rtf"),
            let data = content.data(using: .utf8),
            let attrStr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
@@ -20,9 +21,17 @@ enum DocHeadingExtractor {
                 return fontSize >= 18 ? trimmed : nil
             }
         }
-        // Plain text fallback
+
+        // Markdown: extract ## and ### headings
         return content.components(separatedBy: "\n")
-            .filter { $0.hasPrefix("##") || $0.hasPrefix("# ") }
-            .map { $0.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces) }
+            .compactMap { line in
+                if line.hasPrefix("### ") {
+                    return String(line.dropFirst(4)).trimmingCharacters(in: .whitespaces)
+                } else if line.hasPrefix("## ") {
+                    return String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                }
+                return nil
+            }
+            .filter { !$0.isEmpty }
     }
 }

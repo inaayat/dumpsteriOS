@@ -1,474 +1,253 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Font Helpers
+// MARK: - Markdown Text View
 
-private let defaultFontSize: CGFloat = 16
-private let defaultFont = UIFont(name: "Inter-Regular", size: defaultFontSize) ?? .systemFont(ofSize: defaultFontSize)
-private let boldFont = UIFont(name: "Inter-Bold", size: defaultFontSize) ?? .boldSystemFont(ofSize: defaultFontSize)
+private let bodyFont = UIFont(name: "Inter-Regular", size: 16) ?? .systemFont(ofSize: 16)
+private let headingFont = UIFont(name: "Inter-Bold", size: 22) ?? .boldSystemFont(ofSize: 22)
+private let subheadingFont = UIFont(name: "Inter-SemiBold", size: 18) ?? .systemFont(ofSize: 18, weight: .semibold)
 
-private extension UIFont {
-    var isBold: Bool { fontName.lowercased().contains("bold") || fontDescriptor.symbolicTraits.contains(.traitBold) }
-    var isItalic: Bool { fontDescriptor.symbolicTraits.contains(.traitItalic) }
-
-    func toggledBold() -> UIFont {
-        if isBold {
-            return UIFont(name: "Inter-Regular", size: pointSize) ?? UIFont.systemFont(ofSize: pointSize)
-        } else {
-            return UIFont(name: "Inter-Bold", size: pointSize) ?? UIFont.boldSystemFont(ofSize: pointSize)
-        }
-    }
-
-    func toggledItalic() -> UIFont {
-        let newTraits: UIFontDescriptor.SymbolicTraits
-        if isItalic {
-            newTraits = fontDescriptor.symbolicTraits.subtracting(.traitItalic)
-        } else {
-            newTraits = fontDescriptor.symbolicTraits.union(.traitItalic)
-        }
-        if let desc = fontDescriptor.withSymbolicTraits(newTraits) {
-            return UIFont(descriptor: desc, size: pointSize)
-        }
-        return self
-    }
-}
-
-// MARK: - List Constants
-
-private enum ListConstants {
-    static let markers: [Character] = ["•", "◦", "▪"]
-    static let perLevel: CGFloat = 28
-    static let markerSpace: CGFloat = 18
-}
-
-// MARK: - NotesTextView
-
-class NotesTextView: UITextView {
-    var onContentChange: (() -> Void)?
-
-    private var defaultTypingFont: UIFont { defaultFont }
+class MarkdownTextView: UITextView {
+    var onContentChange: ((String) -> Void)?
+    private var isApplyingStyle = false
 
     var defaultAttributes: [NSAttributedString.Key: Any] {
         let para = NSMutableParagraphStyle()
         para.lineSpacing = 4
         return [
-            .font: defaultTypingFont,
+            .font: bodyFont,
             .foregroundColor: UIColor(Theme.textPrimary),
             .paragraphStyle: para
         ]
     }
 
-    // MARK: Enter key handling
+    func applyMarkdownStyling() {
+        guard !isApplyingStyle else { return }
+        isApplyingStyle = true
+        defer { isApplyingStyle = false }
+
+        let fullText = text ?? ""
+        guard !fullText.isEmpty else { return }
+
+        let cursorPos = selectedRange
+        let nsText = fullText as NSString
+        let textColor = UIColor(Theme.textPrimary)
+        let hiddenColor = UIColor.clear
+        let cursorLineRange = nsText.lineRange(for: NSRange(location: cursorPos.location, length: 0))
+
+        textStorage.beginEditing()
+
+        // Reset to default
+        let fullRange = NSRange(location: 0, length: nsText.length)
+        let defaultPara = NSMutableParagraphStyle()
+        defaultPara.lineSpacing = 4
+        textStorage.setAttributes([
+            .font: bodyFont,
+            .foregroundColor: textColor,
+            .paragraphStyle: defaultPara
+        ], range: fullRange)
+
+        // Style each line
+        var lineStart = 0
+        while lineStart < nsText.length {
+            let lineRange = nsText.lineRange(for: NSRange(location: lineStart, length: 0))
+            let line = nsText.substring(with: lineRange)
+            let trimmedLine = line.trimmingCharacters(in: .newlines)
+            let isCursorLine = NSIntersectionRange(lineRange, cursorLineRange).length > 0
+
+            if trimmedLine.hasPrefix("## ") {
+                // Heading: hide marker, style text bold 22pt, add top spacing
+                let markerLen = 3
+                let textStart = lineRange.location + markerLen
+                let textLen = trimmedLine.count - markerLen
+
+                let headingPara = NSMutableParagraphStyle()
+                headingPara.paragraphSpacingBefore = 16
+                headingPara.lineSpacing = 4
+                headingPara.paragraphSpacing = 4
+                textStorage.addAttribute(.paragraphStyle, value: headingPara, range: NSRange(location: lineRange.location, length: trimmedLine.count))
+                textStorage.addAttribute(.font, value: headingFont, range: NSRange(location: lineRange.location, length: trimmedLine.count))
+                if !isCursorLine {
+                    textStorage.addAttribute(.foregroundColor, value: hiddenColor, range: NSRange(location: lineRange.location, length: markerLen))
+                } else {
+                    textStorage.addAttribute(.foregroundColor, value: UIColor(Theme.textMuted).withAlphaComponent(0.4), range: NSRange(location: lineRange.location, length: markerLen))
+                }
+                if textLen > 0 {
+                    textStorage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: textStart, length: textLen))
+                }
+            } else if trimmedLine.hasPrefix("### ") {
+                // Subheading: hide marker, style text semibold 18pt, add top spacing
+                let markerLen = 4
+                let textStart = lineRange.location + markerLen
+                let textLen = trimmedLine.count - markerLen
+
+                let subPara = NSMutableParagraphStyle()
+                subPara.paragraphSpacingBefore = 12
+                subPara.lineSpacing = 4
+                subPara.paragraphSpacing = 3
+                textStorage.addAttribute(.paragraphStyle, value: subPara, range: NSRange(location: lineRange.location, length: trimmedLine.count))
+                textStorage.addAttribute(.font, value: subheadingFont, range: NSRange(location: lineRange.location, length: trimmedLine.count))
+                if !isCursorLine {
+                    textStorage.addAttribute(.foregroundColor, value: hiddenColor, range: NSRange(location: lineRange.location, length: markerLen))
+                } else {
+                    textStorage.addAttribute(.foregroundColor, value: UIColor(Theme.textMuted).withAlphaComponent(0.4), range: NSRange(location: lineRange.location, length: markerLen))
+                }
+                if textLen > 0 {
+                    textStorage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: textStart, length: textLen))
+                }
+            } else if trimmedLine.hasPrefix("• ") || trimmedLine.hasPrefix("◦ ") || trimmedLine.hasPrefix("▪ ") {
+                // Bullet: indent under heading
+                let para = NSMutableParagraphStyle()
+                para.firstLineHeadIndent = 20
+                para.headIndent = 34
+                para.lineSpacing = 4
+                para.paragraphSpacing = 3
+                textStorage.addAttribute(.paragraphStyle, value: para, range: NSRange(location: lineRange.location, length: trimmedLine.count))
+            } else if trimmedLine.hasPrefix("\t•") || trimmedLine.hasPrefix("\t◦") || trimmedLine.hasPrefix("\t▪") {
+                // Sub-bullet: deeper indent
+                let level = trimmedLine.prefix(while: { $0 == "\t" }).count
+                let para = NSMutableParagraphStyle()
+                para.firstLineHeadIndent = CGFloat(level) * 24 + 20
+                para.headIndent = CGFloat(level) * 24 + 34
+                para.lineSpacing = 4
+                para.paragraphSpacing = 3
+                textStorage.addAttribute(.paragraphStyle, value: para, range: NSRange(location: lineRange.location, length: trimmedLine.count))
+            }
+
+            lineStart = NSMaxRange(lineRange)
+        }
+
+        textStorage.endEditing()
+        selectedRange = cursorPos
+    }
+
+    // MARK: - Enter Key
 
     func handleReturn() {
-        let storage = textStorage
         let cursorPos = selectedRange.location
-        guard cursorPos > 0 else {
-            insertText("\n")
-            return
-        }
+        guard cursorPos > 0 else { insertText("\n"); return }
 
-        let nsText = storage.string as NSString
+        let nsText = (text ?? "") as NSString
         let lineRange = nsText.lineRange(for: NSRange(location: cursorPos, length: 0))
-        let lineText = nsText.substring(with: lineRange)
-        let trimmedLine = lineText.trimmingCharacters(in: .newlines)
+        let lineText = nsText.substring(with: lineRange).trimmingCharacters(in: .newlines)
 
-        // Check if this line is a list item
-        if let listInfo = parseListLine(trimmedLine) {
-            let contentAfterMarker = listInfo.content.trimmingCharacters(in: .whitespaces)
-
-            if contentAfterMarker.isEmpty {
-                // Empty list item → outdent or exit list
-                if listInfo.level > 0 {
-                    // Outdent: replace current line marker with lower level
-                    outdentCurrentLine(lineRange: lineRange, currentLevel: listInfo.level, listType: listInfo.type)
-                } else {
-                    // Exit list: remove the marker entirely
-                    let markerRange = NSRange(location: lineRange.location, length: trimmedLine.count)
-                    storage.replaceCharacters(in: markerRange, with: "")
-                    let newCursor = lineRange.location
-                    selectedRange = NSRange(location: newCursor, length: 0)
-                    typingAttributes = defaultAttributes
-                }
+        if let bulletInfo = parseBulletLine(lineText) {
+            if bulletInfo.content.trimmingCharacters(in: .whitespaces).isEmpty {
+                // Empty bullet → exit list
+                let markerRange = NSRange(location: lineRange.location, length: lineText.count)
+                textStorage.replaceCharacters(in: markerRange, with: "")
+                selectedRange = NSRange(location: lineRange.location, length: 0)
             } else {
-                // Has content → continue list on new line
-                let newMarker: String
-                if listInfo.type == .numbered {
-                    newMarker = "\(listInfo.number + 1). "
-                } else {
-                    let marker = ListConstants.markers[min(listInfo.level, ListConstants.markers.count - 1)]
-                    newMarker = "\(marker) "
-                }
-                let indent = String(repeating: "\t", count: listInfo.level)
-                let insertion = "\n\(indent)\(newMarker)"
-                let insertAttrs = paragraphAttributes(level: listInfo.level)
-                let attrInsertion = NSAttributedString(string: insertion, attributes: insertAttrs)
-                storage.insert(attrInsertion, at: cursorPos)
-                selectedRange = NSRange(location: cursorPos + insertion.count, length: 0)
-                typingAttributes = insertAttrs
+                // Continue bullet on next line
+                let indent = String(repeating: "\t", count: bulletInfo.level)
+                let marker = bulletInfo.marker
+                let insertion = "\n\(indent)\(marker) "
+                insertText(insertion)
             }
         } else {
-            // Not a list item, normal newline
-            let attrNewline = NSAttributedString(string: "\n", attributes: typingAttributes)
-            storage.insert(attrNewline, at: cursorPos)
-            selectedRange = NSRange(location: cursorPos + 1, length: 0)
+            insertText("\n")
         }
-        onContentChange?()
+        onContentChange?(text ?? "")
     }
 
-    // MARK: Backspace handling
-
-    func handleBackspaceAtListStart() -> Bool {
-        let cursorPos = selectedRange.location
-        guard cursorPos > 0, selectedRange.length == 0 else { return false }
-
-        let nsText = (textStorage.string as NSString)
-        let lineRange = nsText.lineRange(for: NSRange(location: cursorPos, length: 0))
-        let lineStart = lineRange.location
-
-        // Only handle if cursor is right after the marker
-        let lineText = nsText.substring(with: lineRange).trimmingCharacters(in: .newlines)
-        guard let listInfo = parseListLine(lineText) else { return false }
-
-        let markerEnd = lineStart + listInfo.markerLength
-        guard cursorPos <= markerEnd else { return false }
-
-        if listInfo.level > 0 {
-            outdentCurrentLine(lineRange: lineRange, currentLevel: listInfo.level, listType: listInfo.type)
-            onContentChange?()
-            return true
-        } else {
-            // Remove list formatting at level 0
-            let removeRange = NSRange(location: lineStart, length: listInfo.markerLength)
-            textStorage.replaceCharacters(in: removeRange, with: "")
-            let paraRange = (textStorage.string as NSString).lineRange(for: NSRange(location: lineStart, length: 0))
-            textStorage.addAttributes(defaultAttributes, range: paraRange)
-            selectedRange = NSRange(location: lineStart, length: 0)
-            typingAttributes = defaultAttributes
-            onContentChange?()
-            return true
-        }
-    }
-
-    // MARK: List Helpers
-
-    struct ListInfo {
-        enum ListType { case bullet, numbered }
-        let type: ListType
+    struct BulletInfo {
         let level: Int
-        let number: Int
+        let marker: String
         let content: String
-        let markerLength: Int
     }
 
-    func parseListLine(_ line: String) -> ListInfo? {
+    private func parseBulletLine(_ line: String) -> BulletInfo? {
         var remaining = line[line.startIndex...]
         var level = 0
-
-        // Count leading tabs for indent level
-        while remaining.hasPrefix("\t") {
-            level += 1
-            remaining = remaining.dropFirst()
-        }
-        // Also count 4-space groups
-        while remaining.hasPrefix("    ") {
-            level += 1
-            remaining = remaining.dropFirst(4)
-        }
+        while remaining.hasPrefix("\t") { level += 1; remaining = remaining.dropFirst() }
 
         let afterIndent = String(remaining)
-
-        // Check bullet markers
-        for marker in ListConstants.markers {
+        for marker in ["•", "◦", "▪"] {
             if afterIndent.hasPrefix("\(marker) ") {
-                let markerLen = line.count - afterIndent.count + 2 // tabs + marker + space
-                let content = String(afterIndent.dropFirst(2))
-                return ListInfo(type: .bullet, level: level, number: 0, content: content, markerLength: markerLen)
+                return BulletInfo(level: level, marker: marker, content: String(afterIndent.dropFirst(2)))
             }
-            if afterIndent == String(marker) {
-                let markerLen = line.count - afterIndent.count + 1
-                return ListInfo(type: .bullet, level: level, number: 0, content: "", markerLength: markerLen)
+            if afterIndent == marker {
+                return BulletInfo(level: level, marker: marker, content: "")
             }
         }
-
-        // Check "- " style bullets
-        if afterIndent.hasPrefix("- ") {
-            let markerLen = line.count - afterIndent.count + 2
-            let content = String(afterIndent.dropFirst(2))
-            return ListInfo(type: .bullet, level: level, number: 0, content: content, markerLength: markerLen)
-        }
-
-        // Check numbered "N. "
-        if let match = afterIndent.range(of: #"^(\d+)\. "#, options: .regularExpression) {
-            let numStr = afterIndent[match].dropLast(2) // drop ". "
-            let num = Int(numStr) ?? 1
-            let markerLen = line.count - afterIndent.count + afterIndent.distance(from: afterIndent.startIndex, to: match.upperBound)
-            let content = String(afterIndent[match.upperBound...])
-            return ListInfo(type: .numbered, level: level, number: num, content: content, markerLength: markerLen)
-        }
-
         return nil
     }
 
-    private func outdentCurrentLine(lineRange: NSRange, currentLevel: Int, listType: ListInfo.ListType) {
-        let newLevel = currentLevel - 1
-        let nsText = textStorage.string as NSString
-        let lineText = nsText.substring(with: lineRange).trimmingCharacters(in: .newlines)
+    // MARK: - Toolbar Actions
 
-        // Build new line with reduced indent
-        let newMarker: String
-        if listType == .numbered {
-            newMarker = "1. "
-        } else {
-            let marker = ListConstants.markers[min(newLevel, ListConstants.markers.count - 1)]
-            newMarker = "\(marker) "
-        }
-        let indent = String(repeating: "\t", count: newLevel)
-        let oldContent = parseListLine(lineText)?.content ?? ""
-        let newLine = "\(indent)\(newMarker)\(oldContent)"
-
-        let replaceRange = NSRange(location: lineRange.location, length: lineText.count)
-        let attrs = paragraphAttributes(level: newLevel)
-        let attrStr = NSAttributedString(string: newLine, attributes: attrs)
-        textStorage.replaceCharacters(in: replaceRange, with: attrStr)
-
-        let newCursorPos = lineRange.location + newLine.count
-        selectedRange = NSRange(location: newCursorPos, length: 0)
-        typingAttributes = attrs
-    }
-
-    func paragraphAttributes(level: Int) -> [NSAttributedString.Key: Any] {
-        let para = NSMutableParagraphStyle()
-        let baseIndent = CGFloat(level) * ListConstants.perLevel
-        para.firstLineHeadIndent = baseIndent
-        para.headIndent = baseIndent + ListConstants.markerSpace
-        para.lineSpacing = 4
-        para.paragraphSpacing = 2
-        return [
-            .font: defaultFont,
-            .foregroundColor: UIColor(Theme.textPrimary),
-            .paragraphStyle: para
-        ]
-    }
-
-    // MARK: Formatting Actions
-
-    func toggleBold() {
-        if selectedRange.length > 0 {
-            textStorage.beginEditing()
-            textStorage.enumerateAttribute(.font, in: selectedRange) { value, range, _ in
-                guard let font = value as? UIFont else { return }
-                textStorage.addAttribute(.font, value: font.toggledBold(), range: range)
-            }
-            textStorage.endEditing()
-        } else {
-            let font = (typingAttributes[.font] as? UIFont) ?? defaultFont
-            typingAttributes[.font] = font.toggledBold()
-        }
-        onContentChange?()
-    }
-
-    func toggleItalic() {
-        if selectedRange.length > 0 {
-            textStorage.beginEditing()
-            textStorage.enumerateAttribute(.font, in: selectedRange) { value, range, _ in
-                guard let font = value as? UIFont else { return }
-                textStorage.addAttribute(.font, value: font.toggledItalic(), range: range)
-            }
-            textStorage.endEditing()
-        } else {
-            let font = (typingAttributes[.font] as? UIFont) ?? defaultFont
-            typingAttributes[.font] = font.toggledItalic()
-        }
-        onContentChange?()
-    }
-
-    func toggleUnderline() {
-        if selectedRange.length > 0 {
-            textStorage.beginEditing()
-            textStorage.enumerateAttribute(.underlineStyle, in: selectedRange) { value, range, _ in
-                let current = (value as? Int) ?? 0
-                let newVal: Int = current > 0 ? 0 : NSUnderlineStyle.single.rawValue
-                textStorage.addAttribute(.underlineStyle, value: newVal, range: range)
-            }
-            textStorage.endEditing()
-        } else {
-            let current = (typingAttributes[.underlineStyle] as? Int) ?? 0
-            typingAttributes[.underlineStyle] = current > 0 ? 0 : NSUnderlineStyle.single.rawValue
-        }
-        onContentChange?()
-    }
-
-    func toggleStrikethrough() {
-        if selectedRange.length > 0 {
-            textStorage.beginEditing()
-            textStorage.enumerateAttribute(.strikethroughStyle, in: selectedRange) { value, range, _ in
-                let current = (value as? Int) ?? 0
-                let newVal: Int = current > 0 ? 0 : NSUnderlineStyle.single.rawValue
-                textStorage.addAttribute(.strikethroughStyle, value: newVal, range: range)
-            }
-            textStorage.endEditing()
-        } else {
-            let current = (typingAttributes[.strikethroughStyle] as? Int) ?? 0
-            typingAttributes[.strikethroughStyle] = current > 0 ? 0 : NSUnderlineStyle.single.rawValue
-        }
-        onContentChange?()
-    }
-
-    func setHeading(_ style: HeadingStyle) {
-        let nsText = textStorage.string as NSString
-        let lineRange = nsText.lineRange(for: selectedRange)
-        let font: UIFont
-        switch style {
-        case .title:
-            font = UIFont(name: "Inter-Bold", size: 26) ?? .boldSystemFont(ofSize: 26)
-        case .heading:
-            font = UIFont(name: "Inter-Bold", size: 22) ?? .boldSystemFont(ofSize: 22)
-        case .subheading:
-            font = UIFont(name: "Inter-SemiBold", size: 18) ?? .systemFont(ofSize: 18, weight: .semibold)
-        case .body:
-            font = defaultFont
-        }
-        textStorage.addAttribute(.font, value: font, range: lineRange)
-        onContentChange?()
-    }
-
-    enum HeadingStyle { case title, heading, subheading, body }
-
-    func insertBulletList() {
-        let nsText = textStorage.string as NSString
+    func toggleHeading() {
+        let nsText = (text ?? "") as NSString
         let lineRange = nsText.lineRange(for: NSRange(location: selectedRange.location, length: 0))
         let lineText = nsText.substring(with: lineRange).trimmingCharacters(in: .newlines)
 
-        if let info = parseListLine(lineText), info.type == .bullet {
-            // Already a bullet → remove it
-            let removeRange = NSRange(location: lineRange.location, length: info.markerLength)
-            textStorage.replaceCharacters(in: removeRange, with: "")
-            let newLineRange = (textStorage.string as NSString).lineRange(for: NSRange(location: lineRange.location, length: 0))
-            textStorage.addAttributes(defaultAttributes, range: newLineRange)
-            selectedRange = NSRange(location: lineRange.location, length: 0)
-            typingAttributes = defaultAttributes
-        } else if let info = parseListLine(lineText), info.type == .numbered {
-            // Was numbered → convert to bullet
-            let marker = ListConstants.markers[min(info.level, ListConstants.markers.count - 1)]
-            let indent = String(repeating: "\t", count: info.level)
-            let newLine = "\(indent)\(marker) \(info.content)"
-            let replaceRange = NSRange(location: lineRange.location, length: lineText.count)
-            let attrs = paragraphAttributes(level: info.level)
-            textStorage.replaceCharacters(in: replaceRange, with: NSAttributedString(string: newLine, attributes: attrs))
+        if lineText.hasPrefix("### ") {
+            // Subheading → Body
+            let newLine = String(lineText.dropFirst(4))
+            textStorage.replaceCharacters(in: NSRange(location: lineRange.location, length: lineText.count), with: newLine)
             selectedRange = NSRange(location: lineRange.location + newLine.count, length: 0)
-            typingAttributes = attrs
+        } else if lineText.hasPrefix("## ") {
+            // Heading → Subheading
+            let newLine = "### " + String(lineText.dropFirst(3))
+            textStorage.replaceCharacters(in: NSRange(location: lineRange.location, length: lineText.count), with: newLine)
+            selectedRange = NSRange(location: lineRange.location + newLine.count, length: 0)
         } else {
-            // Not a list → make it a bullet
-            let marker = "\(ListConstants.markers[0]) "
-            let attrs = paragraphAttributes(level: 0)
-            let insertion = NSAttributedString(string: marker, attributes: attrs)
-            textStorage.insert(insertion, at: lineRange.location)
-            let newPos = lineRange.location + marker.count + lineText.count
-            selectedRange = NSRange(location: newPos, length: 0)
-            // Apply paragraph style to whole line
-            let newLineRange = (textStorage.string as NSString).lineRange(for: NSRange(location: lineRange.location, length: 0))
-            textStorage.addAttributes(attrs, range: newLineRange)
-            typingAttributes = attrs
+            // Body → Heading
+            let newLine = "## " + lineText
+            textStorage.replaceCharacters(in: NSRange(location: lineRange.location, length: lineText.count), with: newLine)
+            selectedRange = NSRange(location: lineRange.location + newLine.count, length: 0)
         }
-        onContentChange?()
+        applyMarkdownStyling()
+        onContentChange?(text ?? "")
     }
 
-    func insertNumberedList() {
-        let nsText = textStorage.string as NSString
+    func toggleBullet() {
+        let nsText = (text ?? "") as NSString
         let lineRange = nsText.lineRange(for: NSRange(location: selectedRange.location, length: 0))
         let lineText = nsText.substring(with: lineRange).trimmingCharacters(in: .newlines)
 
-        if let info = parseListLine(lineText), info.type == .numbered {
-            // Already numbered → remove
-            let removeRange = NSRange(location: lineRange.location, length: info.markerLength)
-            textStorage.replaceCharacters(in: removeRange, with: "")
-            let newLineRange = (textStorage.string as NSString).lineRange(for: NSRange(location: lineRange.location, length: 0))
-            textStorage.addAttributes(defaultAttributes, range: newLineRange)
-            selectedRange = NSRange(location: lineRange.location, length: 0)
-            typingAttributes = defaultAttributes
-        } else if let info = parseListLine(lineText), info.type == .bullet {
-            // Was bullet → convert to numbered
-            let indent = String(repeating: "\t", count: info.level)
-            let newLine = "\(indent)1. \(info.content)"
-            let replaceRange = NSRange(location: lineRange.location, length: lineText.count)
-            let attrs = paragraphAttributes(level: info.level)
-            textStorage.replaceCharacters(in: replaceRange, with: NSAttributedString(string: newLine, attributes: attrs))
+        if lineText.hasPrefix("• ") {
+            // Remove bullet
+            let newLine = String(lineText.dropFirst(2))
+            textStorage.replaceCharacters(in: NSRange(location: lineRange.location, length: lineText.count), with: newLine)
             selectedRange = NSRange(location: lineRange.location + newLine.count, length: 0)
-            typingAttributes = attrs
         } else {
-            // Not a list → make it numbered
-            let marker = "1. "
-            let attrs = paragraphAttributes(level: 0)
-            let insertion = NSAttributedString(string: marker, attributes: attrs)
-            textStorage.insert(insertion, at: lineRange.location)
-            let newPos = lineRange.location + marker.count + lineText.count
-            selectedRange = NSRange(location: newPos, length: 0)
-            let newLineRange = (textStorage.string as NSString).lineRange(for: NSRange(location: lineRange.location, length: 0))
-            textStorage.addAttributes(attrs, range: newLineRange)
-            typingAttributes = attrs
+            // Add bullet
+            let newLine = "• " + lineText
+            textStorage.replaceCharacters(in: NSRange(location: lineRange.location, length: lineText.count), with: newLine)
+            selectedRange = NSRange(location: lineRange.location + newLine.count, length: 0)
         }
-        onContentChange?()
+        applyMarkdownStyling()
+        onContentChange?(text ?? "")
     }
 
     func indentLine() {
-        let nsText = textStorage.string as NSString
+        let nsText = (text ?? "") as NSString
         let lineRange = nsText.lineRange(for: NSRange(location: selectedRange.location, length: 0))
-        let lineText = nsText.substring(with: lineRange).trimmingCharacters(in: .newlines)
-
-        if let info = parseListLine(lineText) {
-            let newLevel = min(info.level + 1, ListConstants.markers.count - 1)
-            let newMarker: String
-            if info.type == .numbered {
-                newMarker = "1. "
-            } else {
-                let marker = ListConstants.markers[min(newLevel, ListConstants.markers.count - 1)]
-                newMarker = "\(marker) "
-            }
-            let indent = String(repeating: "\t", count: newLevel)
-            let newLine = "\(indent)\(newMarker)\(info.content)"
-            let replaceRange = NSRange(location: lineRange.location, length: lineText.count)
-            let attrs = paragraphAttributes(level: newLevel)
-            textStorage.replaceCharacters(in: replaceRange, with: NSAttributedString(string: newLine, attributes: attrs))
-            selectedRange = NSRange(location: lineRange.location + newLine.count, length: 0)
-            typingAttributes = attrs
-        } else {
-            // Not a list — just insert a tab
-            let insertion = NSAttributedString(string: "\t", attributes: typingAttributes)
-            textStorage.insert(insertion, at: selectedRange.location)
-            selectedRange = NSRange(location: selectedRange.location + 1, length: 0)
-        }
-        onContentChange?()
+        textStorage.insert(NSAttributedString(string: "\t", attributes: defaultAttributes), at: lineRange.location)
+        selectedRange = NSRange(location: selectedRange.location + 1, length: 0)
+        applyMarkdownStyling()
+        onContentChange?(text ?? "")
     }
 
     func outdentLine() {
-        let nsText = textStorage.string as NSString
+        let nsText = (text ?? "") as NSString
         let lineRange = nsText.lineRange(for: NSRange(location: selectedRange.location, length: 0))
-        let lineText = nsText.substring(with: lineRange).trimmingCharacters(in: .newlines)
-
-        guard let info = parseListLine(lineText) else { return }
-
-        if info.level > 0 {
-            outdentCurrentLine(lineRange: lineRange, currentLevel: info.level, listType: info.type)
-        } else {
-            // At level 0 → remove list formatting
-            let removeRange = NSRange(location: lineRange.location, length: info.markerLength)
-            textStorage.replaceCharacters(in: removeRange, with: "")
-            let newLineRange = (textStorage.string as NSString).lineRange(for: NSRange(location: lineRange.location, length: 0))
-            textStorage.addAttributes(defaultAttributes, range: newLineRange)
-            selectedRange = NSRange(location: lineRange.location, length: 0)
-            typingAttributes = defaultAttributes
+        let lineText = nsText.substring(with: lineRange)
+        if lineText.hasPrefix("\t") {
+            textStorage.deleteCharacters(in: NSRange(location: lineRange.location, length: 1))
+            selectedRange = NSRange(location: max(lineRange.location, selectedRange.location - 1), length: 0)
+            applyMarkdownStyling()
+            onContentChange?(text ?? "")
         }
-        onContentChange?()
     }
 }
 
-// MARK: - Formatting Toolbar (UIKit InputAccessoryView)
+// MARK: - Formatting Toolbar
 
-private class FormattingAccessoryView: UIView {
-    weak var textView: NotesTextView?
+private class MarkdownToolbar: UIView {
+    weak var textView: MarkdownTextView?
 
-    init(textView: NotesTextView) {
+    init(textView: MarkdownTextView) {
         self.textView = textView
         super.init(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 44))
         backgroundColor = UIColor.systemBackground
@@ -492,54 +271,34 @@ private class FormattingAccessoryView: UIView {
     }
 
     private func setupButtons() {
-        let scroll = UIScrollView()
-        scroll.showsHorizontalScrollIndicator = false
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(scroll)
-        NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            scroll.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
-            scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: trailingAnchor)
-        ])
-
         let stack = UIStackView()
         stack.axis = .horizontal
-        stack.spacing = 2
+        stack.spacing = 4
         stack.alignment = .center
         stack.translatesAutoresizingMaskIntoConstraints = false
-        scroll.addSubview(stack)
+        addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: scroll.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: scroll.bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: scroll.leadingAnchor, constant: 8),
-            stack.trailingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: -8),
-            stack.heightAnchor.constraint(equalTo: scroll.heightAnchor)
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12)
         ])
 
-        // Heading menu
-        let headingBtn = makeMenuButton()
+        // Heading toggle
+        let headingBtn = makeButton(title: "Aa", action: #selector(headingTapped))
+        headingBtn.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
         stack.addArrangedSubview(headingBtn)
         stack.addArrangedSubview(makeSeparator())
 
-        // Bold, Italic, Underline, Strikethrough
-        stack.addArrangedSubview(makeButton(systemName: "bold", action: #selector(boldTapped)))
-        stack.addArrangedSubview(makeButton(systemName: "italic", action: #selector(italicTapped)))
-        stack.addArrangedSubview(makeButton(systemName: "underline", action: #selector(underlineTapped)))
-        stack.addArrangedSubview(makeButton(systemName: "strikethrough", action: #selector(strikethroughTapped)))
-        stack.addArrangedSubview(makeSeparator())
-
-        // Lists
+        // Bullet
         stack.addArrangedSubview(makeButton(systemName: "list.bullet", action: #selector(bulletTapped)))
-        stack.addArrangedSubview(makeButton(systemName: "list.number", action: #selector(numberedTapped)))
         stack.addArrangedSubview(makeSeparator())
 
         // Indent / Outdent
         stack.addArrangedSubview(makeButton(systemName: "decrease.indent", action: #selector(outdentTapped)))
         stack.addArrangedSubview(makeButton(systemName: "increase.indent", action: #selector(indentTapped)))
-        stack.addArrangedSubview(makeSeparator())
 
-        // Dismiss keyboard
+        // Spacer + dismiss
         let spacer = UIView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         stack.addArrangedSubview(spacer)
@@ -551,25 +310,18 @@ private class FormattingAccessoryView: UIView {
         btn.setImage(UIImage(systemName: systemName, withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .medium)), for: .normal)
         btn.tintColor = UIColor(Theme.textPrimary)
         btn.addTarget(self, action: action, for: .touchUpInside)
-        btn.widthAnchor.constraint(equalToConstant: 36).isActive = true
-        btn.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        btn.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        btn.heightAnchor.constraint(equalToConstant: 38).isActive = true
         return btn
     }
 
-    private func makeMenuButton() -> UIButton {
+    private func makeButton(title: String, action: Selector) -> UIButton {
         let btn = UIButton(type: .system)
-        btn.setTitle("Aa", for: .normal)
-        btn.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+        btn.setTitle(title, for: .normal)
         btn.tintColor = UIColor(Theme.textPrimary)
-        btn.showsMenuAsPrimaryAction = true
-        btn.menu = UIMenu(children: [
-            UIAction(title: "Title", handler: { [weak self] _ in self?.textView?.setHeading(.title) }),
-            UIAction(title: "Heading", handler: { [weak self] _ in self?.textView?.setHeading(.heading) }),
-            UIAction(title: "Subheading", handler: { [weak self] _ in self?.textView?.setHeading(.subheading) }),
-            UIAction(title: "Body", handler: { [weak self] _ in self?.textView?.setHeading(.body) }),
-        ])
-        btn.widthAnchor.constraint(equalToConstant: 36).isActive = true
-        btn.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        btn.addTarget(self, action: action, for: .touchUpInside)
+        btn.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        btn.heightAnchor.constraint(equalToConstant: 38).isActive = true
         return btn
     }
 
@@ -581,12 +333,8 @@ private class FormattingAccessoryView: UIView {
         return v
     }
 
-    @objc private func boldTapped() { textView?.toggleBold() }
-    @objc private func italicTapped() { textView?.toggleItalic() }
-    @objc private func underlineTapped() { textView?.toggleUnderline() }
-    @objc private func strikethroughTapped() { textView?.toggleStrikethrough() }
-    @objc private func bulletTapped() { textView?.insertBulletList() }
-    @objc private func numberedTapped() { textView?.insertNumberedList() }
+    @objc private func headingTapped() { textView?.toggleHeading() }
+    @objc private func bulletTapped() { textView?.toggleBullet() }
     @objc private func indentTapped() { textView?.indentLine() }
     @objc private func outdentTapped() { textView?.outdentLine() }
     @objc private func dismissKeyboard() { textView?.resignFirstResponder() }
@@ -594,405 +342,148 @@ private class FormattingAccessoryView: UIView {
 
 // MARK: - UIViewRepresentable
 
-struct NotesEditorRepresentable: UIViewRepresentable {
-    @Binding var rtfContent: String
-    var onTextViewReady: ((NotesTextView) -> Void)?
+struct MarkdownEditorRepresentable: UIViewRepresentable {
+    @Binding var content: String
+    var docId: String
+    var title: String
 
-    func makeUIView(context: Context) -> NotesTextView {
-        let tv = NotesTextView()
+    func makeUIView(context: Context) -> MarkdownTextView {
+        let tv = MarkdownTextView()
         tv.delegate = context.coordinator
         tv.backgroundColor = .clear
         tv.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
         tv.alwaysBounceVertical = true
+        tv.typingAttributes = tv.defaultAttributes
 
-        let toolbar = FormattingAccessoryView(textView: tv)
+        let toolbar = MarkdownToolbar(textView: tv)
         tv.inputAccessoryView = toolbar
 
-        tv.onContentChange = { [weak tv] in
+        tv.onContentChange = { [weak tv] newText in
             guard let tv = tv else { return }
-            context.coordinator.syncToBinding(tv)
+            context.coordinator.contentChanged(newText, docId: docId, title: title)
         }
 
-        // Load content
-        loadContent(into: tv)
-        DispatchQueue.main.async { onTextViewReady?(tv) }
+        // Load initial content
+        tv.text = content
+        tv.applyMarkdownStyling()
         return tv
     }
 
-    func updateUIView(_ uiView: NotesTextView, context: Context) {
-        // Only reload if binding changed externally (not from our own edits)
-        if context.coordinator.lastSavedContent != rtfContent {
-            loadContent(into: uiView)
-            context.coordinator.lastSavedContent = rtfContent
+    func updateUIView(_ uiView: MarkdownTextView, context: Context) {
+        // Only update if content changed externally (outline editor, AI, etc.)
+        if context.coordinator.lastSyncedContent != content {
+            let cursor = uiView.selectedRange
+            uiView.text = content
+            uiView.applyMarkdownStyling()
+            // Restore cursor if still valid
+            let maxPos = (uiView.text ?? "").count
+            if cursor.location <= maxPos {
+                uiView.selectedRange = cursor
+            }
+            context.coordinator.lastSyncedContent = content
         }
     }
 
-    private func loadContent(into tv: NotesTextView) {
-        if rtfContent.hasPrefix("{\\rtf") {
-            if let data = rtfContent.data(using: .utf8),
-               let attrStr = try? NSMutableAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
-                fixFonts(in: attrStr)
-                tv.attributedText = attrStr
-            } else {
-                tv.attributedText = NSAttributedString(string: rtfContent, attributes: tv.defaultAttributes)
-            }
-        } else {
-            // Auto-convert legacy markdown to RTF
-            let converted = Self.markdownToAttributedString(rtfContent)
-            tv.attributedText = converted
-            // Persist as RTF so this only runs once
-            if let data = try? converted.data(from: NSRange(location: 0, length: converted.length),
-                                               documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]),
-               let rtf = String(data: data, encoding: .utf8) {
-                DispatchQueue.main.async { rtfContent = rtf }
-            }
-        }
-    }
-
-    private static func markdownToAttributedString(_ markdown: String) -> NSAttributedString {
-        let result = NSMutableAttributedString()
-        let bodyFont = UIFont(name: "Inter-Regular", size: 16) ?? .systemFont(ofSize: 16)
-        let h1Font   = UIFont(name: "Inter-Bold", size: 22)    ?? .boldSystemFont(ofSize: 22)
-        let h2Font   = UIFont(name: "Inter-SemiBold", size: 18) ?? .boldSystemFont(ofSize: 18)
-        let color    = UIColor(Theme.textPrimary)
-        let lines    = markdown.components(separatedBy: "\n")
-
-        for (i, line) in lines.enumerated() {
-            let sep = i < lines.count - 1 ? "\n" : ""
-            if line.hasPrefix("### ") {
-                let text = String(line.dropFirst(4))
-                result.append(NSAttributedString(string: text + sep, attributes: [.font: h2Font, .foregroundColor: color]))
-            } else if line.hasPrefix("## ") {
-                let text = String(line.dropFirst(3))
-                result.append(NSAttributedString(string: text + sep, attributes: [.font: h1Font, .foregroundColor: color]))
-            } else if line.hasPrefix("# ") {
-                let text = String(line.dropFirst(2))
-                result.append(NSAttributedString(string: text + sep, attributes: [.font: h1Font, .foregroundColor: color]))
-            } else if line.hasPrefix("* ") || line.hasPrefix("- ") {
-                let text = "• " + String(line.dropFirst(2))
-                result.append(NSAttributedString(string: text + sep, attributes: [.font: bodyFont, .foregroundColor: color]))
-            } else {
-                result.append(NSAttributedString(string: line + sep, attributes: [.font: bodyFont, .foregroundColor: color]))
-            }
-        }
-        return result
-    }
-
-    private func fixFonts(in attrStr: NSMutableAttributedString) {
-        attrStr.enumerateAttribute(.font, in: NSRange(location: 0, length: attrStr.length)) { value, range, _ in
-            guard let font = value as? UIFont else { return }
-            let size = font.pointSize
-            let traits = font.fontDescriptor.symbolicTraits
-            let name: String
-            if traits.contains(.traitBold) || font.fontName.lowercased().contains("bold") {
-                name = "Inter-Bold"
-            } else if font.fontName.lowercased().contains("semibold") {
-                name = "Inter-SemiBold"
-            } else if font.fontName.lowercased().contains("medium") {
-                name = "Inter-Medium"
-            } else {
-                name = "Inter-Regular"
-            }
-            var interFont = UIFont(name: name, size: size) ?? font
-            if traits.contains(.traitItalic) {
-                if let desc = interFont.fontDescriptor.withSymbolicTraits(interFont.fontDescriptor.symbolicTraits.union(.traitItalic)) {
-                    interFont = UIFont(descriptor: desc, size: size)
-                }
-            }
-            attrStr.addAttribute(.font, value: interFont, range: range)
-        }
-        attrStr.addAttribute(.foregroundColor, value: UIColor(Theme.textPrimary), range: NSRange(location: 0, length: attrStr.length))
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(binding: $rtfContent) }
+    func makeCoordinator() -> Coordinator { Coordinator(binding: $content) }
 
     class Coordinator: NSObject, UITextViewDelegate {
-        @Binding var rtfContent: String
-        var lastSavedContent: String = ""
+        @Binding var content: String
+        var lastSyncedContent: String = ""
 
         init(binding: Binding<String>) {
-            _rtfContent = binding
-            lastSavedContent = binding.wrappedValue
+            _content = binding
+            lastSyncedContent = binding.wrappedValue
         }
 
-        func syncToBinding(_ tv: NotesTextView) {
-            guard let attrText = tv.attributedText, attrText.length > 0 else {
-                let empty = ""
-                rtfContent = empty
-                lastSavedContent = empty
-                return
-            }
-            if let rtfData = try? attrText.data(from: NSRange(location: 0, length: attrText.length),
-                                                 documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]),
-               let rtfString = String(data: rtfData, encoding: .utf8) {
-                rtfContent = rtfString
-                lastSavedContent = rtfString
-            }
+        func contentChanged(_ newText: String, docId: String, title: String) {
+            content = newText
+            lastSyncedContent = newText
+            // Direct save to DB — bypasses SwiftUI lifecycle entirely
+            guard !docId.isEmpty, !newText.isEmpty else { return }
+            try? Queries.saveMasterDoc(id: docId, content: newText, title: title)
         }
 
         func textViewDidChange(_ textView: UITextView) {
-            guard let tv = textView as? NotesTextView else { return }
-            syncToBinding(tv)
+            guard let tv = textView as? MarkdownTextView else { return }
+            tv.applyMarkdownStyling()
+            tv.onContentChange?(tv.text ?? "")
         }
 
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
-            guard let tv = textView as? NotesTextView else { return true }
-
+            guard let tv = textView as? MarkdownTextView else { return true }
             if text == "\n" {
                 tv.handleReturn()
                 return false
             }
-
-            if text.isEmpty && range.length == 1 {
-                // Backspace
-                if tv.handleBackspaceAtListStart() {
-                    return false
-                }
-            }
-
             return true
         }
-    }
-}
 
-// MARK: - Synthesize Preview (SwiftUI rendered)
-
-private struct SynthesizePreviewText: View {
-    let markdown: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(markdown.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
-                previewLine(line)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func previewLine(_ line: String) -> some View {
-        if line.hasPrefix("### ") {
-            Text(String(line.dropFirst(4)))
-                .font(.inter(14, weight: .medium))
-                .foregroundStyle(Theme.textPrimary)
-                .padding(.top, 6)
-        } else if line.hasPrefix("## ") {
-            Text(String(line.dropFirst(3)))
-                .font(.inter(16, weight: .bold))
-                .foregroundStyle(Theme.textPrimary)
-                .padding(.top, 8)
-        } else if line.hasPrefix("# ") {
-            Text(String(line.dropFirst(2)))
-                .font(.inter(18, weight: .bold))
-                .foregroundStyle(Theme.textPrimary)
-                .padding(.top, 10)
-        } else if line.trimmingCharacters(in: .whitespaces) == "---" {
-            Divider().padding(.vertical, 4)
-        } else if line.hasPrefix("• ") || line.hasPrefix("- ") || line.hasPrefix("* ") {
-            HStack(alignment: .top, spacing: 4) {
-                Text("•").font(.inter(12)).foregroundStyle(Theme.textMuted)
-                inlinePreview(String(line.dropFirst(2)))
-            }
-            .padding(.leading, 4)
-        } else if line.hasPrefix("→ ") {
-            HStack(alignment: .top, spacing: 4) {
-                Text("→").font(.inter(12)).foregroundStyle(Theme.successColor)
-                inlinePreview(String(line.dropFirst(2)))
-            }
-            .padding(.leading, 4)
-        } else if line.isEmpty {
-            Spacer().frame(height: 4)
-        } else {
-            inlinePreview(line)
-        }
-    }
-
-    @ViewBuilder
-    private func inlinePreview(_ text: String) -> some View {
-        if let attr = try? AttributedString(markdown: text) {
-            Text(attr).font(.inter(12)).foregroundStyle(Theme.textPrimary)
-        } else {
-            Text(text).font(.inter(12)).foregroundStyle(Theme.textPrimary)
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            guard let tv = textView as? MarkdownTextView else { return }
+            tv.applyMarkdownStyling()
         }
     }
 }
 
-// MARK: - Markdown → RTF Converter
+// MARK: - RTF → Markdown Migration
 
-private enum MarkdownToRTF {
-    static func convert(_ markdown: String) -> String {
-        let attrStr = attributedString(from: markdown)
-        guard let data = try? attrStr.data(from: NSRange(location: 0, length: attrStr.length),
-                                            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]),
-              let rtf = String(data: data, encoding: .utf8) else {
-            return markdown
-        }
-        return rtf
-    }
-
-    static func attributedString(from markdown: String) -> NSAttributedString {
-        let result = NSMutableAttributedString()
-        let lines = markdown.components(separatedBy: "\n")
-
-        for (index, line) in lines.enumerated() {
-            let attrLine = parseLine(line)
-            result.append(attrLine)
-            if index < lines.count - 1 {
-                result.append(NSAttributedString(string: "\n"))
-            }
-        }
-        return result
-    }
-
-    private static func parseLine(_ line: String) -> NSAttributedString {
-        let textColor = UIColor(Theme.textPrimary)
-
-        // Headings
-        if line.hasPrefix("### ") {
-            let text = String(line.dropFirst(4))
-            let font = UIFont(name: "Inter-SemiBold", size: 18) ?? .systemFont(ofSize: 18, weight: .semibold)
-            return NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: textColor])
-        }
-        if line.hasPrefix("## ") {
-            let text = String(line.dropFirst(3))
-            let font = UIFont(name: "Inter-Bold", size: 22) ?? .boldSystemFont(ofSize: 22)
-            return NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: textColor])
-        }
-        if line.hasPrefix("# ") {
-            let text = String(line.dropFirst(2))
-            let font = UIFont(name: "Inter-Bold", size: 26) ?? .boldSystemFont(ofSize: 26)
-            return NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: textColor])
+private enum RTFMigration {
+    static func migrateIfNeeded(_ content: String) -> String {
+        guard content.hasPrefix("{\\rtf") else { return content }
+        guard let data = content.data(using: .utf8),
+              let attrStr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) else {
+            return content
         }
 
-        // Horizontal rule
-        if line.trimmingCharacters(in: .whitespaces) == "---" {
-            let font = UIFont(name: "Inter-Regular", size: 16) ?? .systemFont(ofSize: 16)
-            return NSAttributedString(string: "───────────────────────", attributes: [
-                .font: font, .foregroundColor: UIColor.separator
-            ])
-        }
+        let fullText = attrStr.string
+        let lines = fullText.components(separatedBy: "\n")
+        var result: [String] = []
+        var charPos = 0
 
-        // Detect indent level
-        var stripped = line[line.startIndex...]
-        var level = 0
-        while stripped.hasPrefix("\t") { level += 1; stripped = stripped.dropFirst() }
-        while stripped.hasPrefix("    ") { level += 1; stripped = stripped.dropFirst(4) }
-        let afterIndent = String(stripped)
+        for line in lines {
+            defer { charPos += line.count + 1 }
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
 
-        // Bullet list
-        if afterIndent.hasPrefix("• ") || afterIndent.hasPrefix("- ") || afterIndent.hasPrefix("* ") {
-            let content = String(afterIndent.dropFirst(2))
-            let marker = ["•", "◦", "▪"][min(level, 2)]
-            return buildListLine(marker: "\(marker) ", content: content, level: level, textColor: textColor)
-        }
-
-        // Numbered list
-        if let match = afterIndent.range(of: #"^(\d+)\. "#, options: .regularExpression) {
-            let marker = String(afterIndent[match])
-            let content = String(afterIndent[match.upperBound...])
-            return buildListLine(marker: marker, content: content, level: level, textColor: textColor)
-        }
-
-        // Regular paragraph with inline formatting
-        return buildInlineFormatted(afterIndent, level: level, textColor: textColor)
-    }
-
-    private static func buildListLine(marker: String, content: String, level: Int, textColor: UIColor) -> NSAttributedString {
-        let para = NSMutableParagraphStyle()
-        let baseIndent = CGFloat(level) * ListConstants.perLevel
-        para.firstLineHeadIndent = baseIndent
-        para.headIndent = baseIndent + ListConstants.markerSpace
-        para.lineSpacing = 4
-        para.paragraphSpacing = 2
-
-        let bodyFont = UIFont(name: "Inter-Regular", size: 16) ?? .systemFont(ofSize: 16)
-        let result = NSMutableAttributedString()
-
-        let markerAttr = NSAttributedString(string: marker, attributes: [
-            .font: bodyFont, .foregroundColor: textColor, .paragraphStyle: para
-        ])
-        result.append(markerAttr)
-
-        let contentAttr = inlineFormatted(content, font: bodyFont, textColor: textColor)
-        result.append(contentAttr)
-
-        // Apply paragraph style to entire line
-        result.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: result.length))
-        return result
-    }
-
-    private static func buildInlineFormatted(_ text: String, level: Int, textColor: UIColor) -> NSAttributedString {
-        let para = NSMutableParagraphStyle()
-        para.lineSpacing = 4
-        if level > 0 {
-            para.firstLineHeadIndent = CGFloat(level) * ListConstants.perLevel
-            para.headIndent = CGFloat(level) * ListConstants.perLevel
-        }
-
-        let bodyFont = UIFont(name: "Inter-Regular", size: 16) ?? .systemFont(ofSize: 16)
-        let result = inlineFormatted(text, font: bodyFont, textColor: textColor)
-        let mutable = NSMutableAttributedString(attributedString: result)
-        mutable.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: mutable.length))
-        return mutable
-    }
-
-    private static func inlineFormatted(_ text: String, font: UIFont, textColor: UIColor) -> NSAttributedString {
-        let result = NSMutableAttributedString()
-        var remaining = text[text.startIndex...]
-
-        while !remaining.isEmpty {
-            // Bold: **text**
-            if remaining.hasPrefix("**") {
-                let afterOpen = remaining.dropFirst(2)
-                if let closeRange = afterOpen.range(of: "**") {
-                    let boldText = String(afterOpen[afterOpen.startIndex..<closeRange.lowerBound])
-                    let boldFont = UIFont(name: "Inter-Bold", size: font.pointSize) ?? font
-                    result.append(NSAttributedString(string: boldText, attributes: [.font: boldFont, .foregroundColor: textColor]))
-                    remaining = afterOpen[closeRange.upperBound...]
-                    continue
-                }
+            if trimmed.isEmpty {
+                result.append("")
+                continue
             }
 
-            // Italic: *text*
-            if remaining.hasPrefix("*") && !remaining.hasPrefix("**") {
-                let afterOpen = remaining.dropFirst(1)
-                if let closeIdx = afterOpen.firstIndex(of: "*") {
-                    let italicText = String(afterOpen[afterOpen.startIndex..<closeIdx])
-                    var italicFont = font
-                    if let desc = font.fontDescriptor.withSymbolicTraits(font.fontDescriptor.symbolicTraits.union(.traitItalic)) {
-                        italicFont = UIFont(descriptor: desc, size: font.pointSize)
+            guard charPos < attrStr.length else {
+                result.append(line)
+                continue
+            }
+
+            let checkLen = min(max(line.count, 1), attrStr.length - charPos)
+            guard checkLen > 0 else { result.append(line); continue }
+
+            var fontSize: CGFloat = 0
+            var isBold = false
+            attrStr.enumerateAttribute(.font, in: NSRange(location: charPos, length: checkLen)) { val, _, _ in
+                if let f = val as? UIFont {
+                    fontSize = max(fontSize, f.pointSize)
+                    if f.fontName.lowercased().contains("bold") || f.fontDescriptor.symbolicTraits.contains(.traitBold) {
+                        isBold = true
                     }
-                    result.append(NSAttributedString(string: italicText, attributes: [.font: italicFont, .foregroundColor: textColor]))
-                    remaining = afterOpen[afterOpen.index(after: closeIdx)...]
-                    continue
                 }
             }
 
-            // Inline code: `text`
-            if remaining.hasPrefix("`") {
-                let afterOpen = remaining.dropFirst(1)
-                if let closeIdx = afterOpen.firstIndex(of: "`") {
-                    let codeText = String(afterOpen[afterOpen.startIndex..<closeIdx])
-                    let codeFont = UIFont.monospacedSystemFont(ofSize: font.pointSize - 1, weight: .regular)
-                    result.append(NSAttributedString(string: codeText, attributes: [
-                        .font: codeFont, .foregroundColor: textColor,
-                        .backgroundColor: UIColor.systemGray6
-                    ]))
-                    remaining = afterOpen[afterOpen.index(after: closeIdx)...]
-                    continue
-                }
+            if fontSize >= 22 {
+                let cleanText = trimmed.hasPrefix("## ") ? trimmed : "## \(trimmed)"
+                result.append(cleanText)
+            } else if fontSize >= 18 && isBold {
+                let cleanText = trimmed.hasPrefix("### ") ? trimmed : "### \(trimmed)"
+                result.append(cleanText)
+            } else if trimmed.hasPrefix("•") || trimmed.hasPrefix("◦") || trimmed.hasPrefix("▪") {
+                result.append(line)
+            } else {
+                result.append(line)
             }
-
-            // Regular character
-            let char = remaining[remaining.startIndex]
-            result.append(NSAttributedString(string: String(char), attributes: [.font: font, .foregroundColor: textColor]))
-            remaining = remaining.dropFirst()
         }
 
-        return result
+        return result.joined(separator: "\n")
     }
 }
-
-// MARK: - MasterDocEditorView
 
 // MARK: - Inbox Tab Enum
 
@@ -1007,6 +498,8 @@ struct PlacementData: Identifiable {
     let heading: String
 }
 
+// MARK: - MasterDocEditorView
+
 struct MasterDocEditorView: View {
     let doc: MasterDoc
 
@@ -1014,7 +507,6 @@ struct MasterDocEditorView: View {
     @State private var title: String = ""
     @State private var isEditingTitle = false
     @State private var editedTitle = ""
-    @State private var textViewRef: NotesTextView? = nil
     @State private var isSynthesizing = false
     @State private var aiError: String? = nil
     @State private var docTags: [Tag] = []
@@ -1024,9 +516,7 @@ struct MasterDocEditorView: View {
     @State private var allItems: [Item] = []
     @State private var categoryFilter: Category? = nil
     @State private var placementItem: PlacementData? = nil
-    @State private var placementHeading: String? = nil
     @State private var showOutline = false
-    @State private var saveTimer: Timer? = nil
 
     private var aiAvailable: Bool {
         if #available(iOS 26.0, *) { return AIService.isAvailable }
@@ -1035,14 +525,12 @@ struct MasterDocEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Tag row
             tagRow
 
             if isEditingTitle {
                 titleEditBar
             }
 
-            // Inbox / All Items tabs
             itemsSection
 
             if isSynthesizing {
@@ -1068,15 +556,7 @@ struct MasterDocEditorView: View {
                 .background(Theme.warnColor.opacity(0.08))
             }
 
-            NotesEditorRepresentable(rtfContent: $content, onTextViewReady: { tv in
-                textViewRef = tv
-            })
-            .onChange(of: content) { _, newValue in
-                saveTimer?.invalidate()
-                saveTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
-                    try? Queries.saveMasterDoc(id: doc.id, content: newValue, title: title)
-                }
-            }
+            MarkdownEditorRepresentable(content: $content, docId: doc.id, title: title)
         }
         .background(Theme.canvas)
         .navigationTitle(isEditingTitle ? "" : title)
@@ -1115,18 +595,29 @@ struct MasterDocEditorView: View {
             }
         }
         .sheet(isPresented: $showOutline) {
-            OutlineEditorView(content: $content, docId: doc.id, onReload: { reload() })
+            OutlineEditorView(content: $content, docId: doc.id, onSave: { save() }, onReload: { reload() })
         }
         .onAppear {
-            content = doc.content
-            title = doc.title
+            if let fresh = try? Queries.getMasterDocById(id: doc.id), !fresh.content.isEmpty {
+                let migrated = RTFMigration.migrateIfNeeded(fresh.content)
+                content = migrated
+                title = fresh.title
+                // Persist migration if content changed
+                if migrated != fresh.content {
+                    try? Queries.saveMasterDoc(id: doc.id, content: migrated, title: fresh.title)
+                }
+            } else if content.isEmpty {
+                content = RTFMigration.migrateIfNeeded(doc.content)
+                title = doc.title
+            }
             reload()
         }
-        .onDisappear {
-            saveTimer?.invalidate()
-            saveTimer = nil
-            try? Queries.saveMasterDoc(id: doc.id, content: content, title: title)
-        }
+    }
+
+    // MARK: - Save
+
+    private func save() {
+        try? Queries.saveMasterDoc(id: doc.id, content: content, title: title)
     }
 
     // MARK: - Tag Row
@@ -1172,11 +663,10 @@ struct MasterDocEditorView: View {
         .overlay(Rectangle().fill(Theme.border).frame(height: 0.5), alignment: .bottom)
     }
 
-    // MARK: - Items Section (Inbox / All Items)
+    // MARK: - Items Section
 
     private var itemsSection: some View {
         VStack(spacing: 0) {
-            // Tab picker
             HStack(spacing: 0) {
                 ForEach(DocTab.allCases, id: \.self) { tab in
                     Button {
@@ -1216,7 +706,6 @@ struct MasterDocEditorView: View {
             .background(Theme.cardBg)
             .overlay(Rectangle().fill(Theme.border).frame(height: 0.5), alignment: .bottom)
 
-            // Content
             if selectedTab == .inbox {
                 inboxContent
             } else {
@@ -1287,7 +776,6 @@ struct MasterDocEditorView: View {
 
     private var allItemsContent: some View {
         VStack(spacing: 0) {
-            // Filter chips
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     filterChip("All", selected: categoryFilter == nil) { categoryFilter = nil; reloadAllItems() }
@@ -1304,11 +792,8 @@ struct MasterDocEditorView: View {
                     ForEach(allItems) { item in
                         HStack(spacing: 8) {
                             Button {
-                                if item.done {
-                                    try? Queries.uncompleteItem(id: item.id)
-                                } else {
-                                    try? Queries.completeItem(id: item.id)
-                                }
+                                if item.done { try? Queries.uncompleteItem(id: item.id) }
+                                else { try? Queries.completeItem(id: item.id) }
                                 reloadAllItems()
                             } label: {
                                 Image(systemName: item.done ? "checkmark.circle.fill" : "circle")
@@ -1384,7 +869,7 @@ struct MasterDocEditorView: View {
         let trimmed = editedTitle.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty {
             title = trimmed
-            try? Queries.saveMasterDoc(id: doc.id, content: content, title: title)
+            save()
         }
         isEditingTitle = false
     }
@@ -1399,102 +884,53 @@ struct MasterDocEditorView: View {
 
         Task {
             let headings = DocHeadingExtractor.extractHeadings(from: content)
-
             if headings.isEmpty {
-                await MainActor.run {
-                    placementItem = PlacementData(item: item, heading: "General")
-                }
+                await MainActor.run { placementItem = PlacementData(item: item, heading: "General") }
                 return
             }
-
             if #available(iOS 26.0, *) {
                 do {
                     let suggested = try await AIService.suggestHeading(for: item.text, existingHeadings: headings)
-                    await MainActor.run {
-                        placementItem = PlacementData(item: item, heading: suggested)
-                    }
+                    await MainActor.run { placementItem = PlacementData(item: item, heading: suggested) }
                 } catch {
-                    await MainActor.run {
-                        placementItem = PlacementData(item: item, heading: headings.first ?? "General")
-                    }
+                    await MainActor.run { placementItem = PlacementData(item: item, heading: headings.first ?? "General") }
                 }
             }
         }
     }
 
     private func insertItemUnderHeading(item: Item, heading: String, rewrittenText: String? = nil, shouldReload: Bool = true) {
-        let bulletText = rewrittenText ?? item.text
-        let attrStr = loadAsAttributedString()
-        let fullText = attrStr.string
+        let raw = rewrittenText ?? item.text
+        let bulletText = raw.trimmingCharacters(in: CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019}"))
+        let lines = content.components(separatedBy: "\n")
 
-        let result = NSMutableAttributedString(attributedString: attrStr)
-        let headingFont = UIFont(name: "Inter-Bold", size: 22) ?? .boldSystemFont(ofSize: 22)
-        let bulletFont = UIFont(name: "Inter-Regular", size: 16) ?? .systemFont(ofSize: 16)
-        let textColor = UIColor(Theme.textPrimary)
+        // Find the heading line (case-insensitive match)
+        let headingIndex = lines.firstIndex { line in
+            let clean = line.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces)
+            return clean.lowercased() == heading.lowercased()
+        }
 
-        let nsString = fullText as NSString
-        let headingRange = nsString.range(of: heading, options: .caseInsensitive)
-
-        if headingRange.location != NSNotFound {
-            // Find end of this section (next line with large font, or end of doc)
-            var insertLocation = headingRange.location + headingRange.length
-            let totalLength = result.length
-
-            // Move past newline after heading
-            if insertLocation < totalLength {
-                let nextChar = nsString.substring(with: NSRange(location: insertLocation, length: 1))
-                if nextChar == "\n" { insertLocation += 1 }
+        if let idx = headingIndex {
+            // Find end of this section
+            var insertAt = idx + 1
+            while insertAt < lines.count && !lines[insertAt].hasPrefix("## ") && !lines[insertAt].hasPrefix("### ") {
+                insertAt += 1
             }
-
-            // Skip existing content until we hit another heading or end
-            while insertLocation < totalLength {
-                let charRange = NSRange(location: insertLocation, length: 1)
-                let char = nsString.substring(with: charRange)
-                if char == "\n" {
-                    let nextPos = insertLocation + 1
-                    if nextPos < totalLength {
-                        var nextFont: UIFont?
-                        result.enumerateAttribute(.font, in: NSRange(location: nextPos, length: 1)) { val, _, _ in
-                            nextFont = val as? UIFont
-                        }
-                        if let f = nextFont, f.pointSize >= 18 { break }
-                    }
-                }
-                insertLocation += 1
-            }
-
-            let bullet = NSAttributedString(string: "\n• \(bulletText)", attributes: [.font: bulletFont, .foregroundColor: textColor])
-            result.insert(bullet, at: insertLocation)
+            var mutableLines = lines
+            mutableLines.insert("• \(bulletText)", at: insertAt)
+            content = mutableLines.joined(separator: "\n")
         } else {
             // Heading doesn't exist — append new section
-            let newSection = NSMutableAttributedString()
-            newSection.append(NSAttributedString(string: "\n\n", attributes: [.font: bulletFont]))
-            newSection.append(NSAttributedString(string: heading, attributes: [.font: headingFont, .foregroundColor: textColor]))
-            newSection.append(NSAttributedString(string: "\n• \(bulletText)", attributes: [.font: bulletFont, .foregroundColor: textColor]))
-            result.append(newSection)
+            let newSection = "\n\n## \(heading)\n• \(bulletText)"
+            content += newSection
         }
 
-        // Save back as RTF
-        if let data = try? result.data(from: NSRange(location: 0, length: result.length),
-                                        documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]),
-           let rtf = String(data: data, encoding: .utf8) {
-            content = rtf
-        }
-
+        save()
         try? Queries.markItemIncorporated(id: item.id)
         if shouldReload { reload() }
     }
 
-    private func loadAsAttributedString() -> NSAttributedString {
-        if content.hasPrefix("{\\rtf"),
-           let data = content.data(using: .utf8),
-           let attrStr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
-            return attrStr
-        }
-        return NSAttributedString(string: content)
-    }
-
-    // MARK: - Sort Trash (Batch)
+    // MARK: - Sort Trash
 
     private func sortTrash() {
         guard #available(iOS 26.0, *) else { return }
@@ -1502,35 +938,27 @@ struct MasterDocEditorView: View {
         aiError = nil
 
         let itemsToSort = inboxItems
-        let bulletTexts = itemsToSort.map(\.text)
         let headings = DocHeadingExtractor.extractHeadings(from: content)
-        let totalSize = content.count + bulletTexts.joined().count
 
         Task {
             do {
-                if totalSize < 6000 && headings.isEmpty {
-                    // Empty doc: let AI create categories and file everything (returns markdown, auto-converted)
-                    let result = try await AIService.synthesizeMasterDoc(existingContent: content, bullets: bulletTexts.joined(separator: "\n"))
-                    await MainActor.run {
-                        content = result
-                        for item in itemsToSort { try? Queries.markItemIncorporated(id: item.id) }
-                        isSynthesizing = false
-                        reload()
-                    }
-                } else if headings.isEmpty {
-                    throw AIService.AIError.documentTooLarge
-                } else {
-                    // Doc has headings: place each item under the correct heading using RTF-safe insertion
+                if !headings.isEmpty {
                     for item in itemsToSort {
                         let suggested = (try? await AIService.suggestHeading(for: item.text, existingHeadings: headings)) ?? headings[0]
                         await MainActor.run {
                             insertItemUnderHeading(item: item, heading: suggested, shouldReload: false)
                         }
                     }
-                    await MainActor.run {
-                        isSynthesizing = false
-                        reload()
+                } else {
+                    for item in itemsToSort {
+                        await MainActor.run {
+                            insertItemUnderHeading(item: item, heading: "General", shouldReload: false)
+                        }
                     }
+                }
+                await MainActor.run {
+                    isSynthesizing = false
+                    reload()
                 }
             } catch {
                 await MainActor.run {
@@ -1554,7 +982,7 @@ struct MasterDocEditorView: View {
     }
 }
 
-// MARK: - Tag Picker for Docs
+// MARK: - Tag Picker
 
 struct DocTagPickerView: View {
     let docId: String
@@ -1736,6 +1164,7 @@ struct HeadingPickerView: View {
 struct OutlineEditorView: View {
     @Binding var content: String
     let docId: String
+    var onSave: () -> Void
     var onReload: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -1743,8 +1172,6 @@ struct OutlineEditorView: View {
     @State private var newHeadingText = ""
     @State private var newIsSubheading = false
     @State private var deleteTarget: OutlineHeading? = nil
-    @State private var manualTextUnderDelete: [String] = []
-    @State private var moveTarget: String? = nil
     @State private var showDeleteAlert = false
 
     struct OutlineHeading: Identifiable {
@@ -1793,7 +1220,8 @@ struct OutlineEditorView: View {
                                 .foregroundStyle(Theme.textPrimary)
                             Spacer()
                             Button {
-                                prepareDelete(heading)
+                                deleteTarget = heading
+                                showDeleteAlert = true
                             } label: {
                                 Image(systemName: "trash")
                                     .font(.system(size: 12))
@@ -1819,68 +1247,22 @@ struct OutlineEditorView: View {
                 }
             }
             .alert("Delete Category", isPresented: $showDeleteAlert) {
-                if !manualTextUnderDelete.isEmpty {
-                    Button("Delete text too", role: .destructive) { confirmDelete(keepManualText: false) }
-                    Button("Move text to...") { showMoveOptions() }
-                    Button("Cancel", role: .cancel) { deleteTarget = nil }
-                } else {
-                    Button("Delete", role: .destructive) { confirmDelete(keepManualText: false) }
-                    Button("Cancel", role: .cancel) { deleteTarget = nil }
-                }
+                Button("Delete", role: .destructive) { confirmDelete() }
+                Button("Cancel", role: .cancel) { deleteTarget = nil }
             } message: {
-                if !manualTextUnderDelete.isEmpty {
-                    Text("This category has \(manualTextUnderDelete.count) line(s) of manual text. Items from inbox will return to inbox.")
-                } else {
-                    Text("Items filed under this category will return to inbox.")
-                }
+                Text("Items filed under this category will return to inbox.")
             }
             .onAppear { parseHeadings() }
         }
     }
 
     private func parseHeadings() {
-        let attrStr: NSAttributedString
-        if content.hasPrefix("{\\rtf"),
-           let data = content.data(using: .utf8),
-           let parsed = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
-            attrStr = parsed
-        } else {
-            // Plain text fallback — check for ## markers
-            let lines = content.components(separatedBy: "\n")
-            headings = lines.enumerated().compactMap { index, line in
-                if line.hasPrefix("### ") {
-                    return OutlineHeading(text: String(line.dropFirst(4)).trimmingCharacters(in: .whitespaces), level: 2, lineIndex: index)
-                } else if line.hasPrefix("## ") {
-                    return OutlineHeading(text: String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces), level: 1, lineIndex: index)
-                } else if line.hasPrefix("# ") {
-                    return OutlineHeading(text: String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces), level: 1, lineIndex: index)
-                }
-                return nil
-            }
-            return
-        }
-
-        // Parse RTF: find lines with large/bold fonts (headings)
-        let fullText = attrStr.string
-        let lines = fullText.components(separatedBy: "\n")
-        var charPos = 0
+        let lines = content.components(separatedBy: "\n")
         headings = lines.enumerated().compactMap { index, line in
-            defer { charPos += line.count + 1 }
-            guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-            guard charPos < attrStr.length else { return nil }
-
-            let checkLen = min(line.count, attrStr.length - charPos)
-            guard checkLen > 0 else { return nil }
-
-            var fontSize: CGFloat = 0
-            attrStr.enumerateAttribute(.font, in: NSRange(location: charPos, length: checkLen)) { val, _, _ in
-                if let font = val as? UIFont { fontSize = max(fontSize, font.pointSize) }
-            }
-
-            if fontSize >= 22 {
-                return OutlineHeading(text: line.trimmingCharacters(in: .whitespaces), level: 1, lineIndex: index)
-            } else if fontSize >= 18 && fontSize < 22 {
-                return OutlineHeading(text: line.trimmingCharacters(in: .whitespaces), level: 2, lineIndex: index)
+            if line.hasPrefix("### ") {
+                return OutlineHeading(text: String(line.dropFirst(4)).trimmingCharacters(in: .whitespaces), level: 2, lineIndex: index)
+            } else if line.hasPrefix("## ") {
+                return OutlineHeading(text: String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces), level: 1, lineIndex: index)
             }
             return nil
         }
@@ -1890,127 +1272,46 @@ struct OutlineEditorView: View {
         let text = newHeadingText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
 
-        let headingFont: UIFont
-        if newIsSubheading {
-            headingFont = UIFont(name: "Inter-SemiBold", size: 18) ?? .systemFont(ofSize: 18, weight: .semibold)
+        let prefix = newIsSubheading ? "### " : "## "
+        let newLine = "\(prefix)\(text)"
+
+        if content.isEmpty {
+            content = newLine
         } else {
-            headingFont = UIFont(name: "Inter-Bold", size: 22) ?? .boldSystemFont(ofSize: 22)
-        }
-        let textColor = UIColor(Theme.textPrimary)
-
-        let result: NSMutableAttributedString
-        if content.hasPrefix("{\\rtf"),
-           let data = content.data(using: .utf8),
-           let existing = try? NSMutableAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
-            result = existing
-        } else {
-            let defaultFont = UIFont(name: "Inter-Regular", size: 16) ?? .systemFont(ofSize: 16)
-            result = NSMutableAttributedString(string: content, attributes: [.font: defaultFont, .foregroundColor: textColor])
+            content += "\n\n\(newLine)"
         }
 
-        let newHeading = NSMutableAttributedString()
-        if result.length > 0 {
-            newHeading.append(NSAttributedString(string: "\n\n"))
-        }
-        newHeading.append(NSAttributedString(string: text, attributes: [.font: headingFont, .foregroundColor: textColor]))
-
-        result.append(newHeading)
-
-        if let data = try? result.data(from: NSRange(location: 0, length: result.length),
-                                        documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]),
-           let rtf = String(data: data, encoding: .utf8) {
-            content = rtf
-        }
-
+        onSave()
         newHeadingText = ""
         parseHeadings()
     }
 
-    private func prepareDelete(_ heading: OutlineHeading) {
-        deleteTarget = heading
-        let lines = content.components(separatedBy: "\n")
-        let startIdx = heading.lineIndex + 1
-        var endIdx = startIdx
-
-        while endIdx < lines.count && !lines[endIdx].hasPrefix("#") {
-            endIdx += 1
-        }
-
-        let sectionLines = Array(lines[startIdx..<endIdx])
-        manualTextUnderDelete = sectionLines.filter { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            return !trimmed.isEmpty && !trimmed.hasPrefix("•")
-        }
-
-        // Un-incorporate items that have bullet markers
-        showDeleteAlert = true
-    }
-
-    private func confirmDelete(keepManualText: Bool) {
+    private func confirmDelete() {
         guard let heading = deleteTarget else { return }
         var lines = content.components(separatedBy: "\n")
+        guard heading.lineIndex < lines.count else { deleteTarget = nil; return }
+
         let startIdx = heading.lineIndex
         var endIdx = startIdx + 1
 
-        while endIdx < lines.count && !lines[endIdx].hasPrefix("#") {
-            endIdx += 1
-        }
-
-        // Un-incorporate items in this section
-        let sectionLines = Array(lines[startIdx+1..<endIdx])
-        for line in sectionLines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("•") {
+        while endIdx < lines.count && !lines[endIdx].hasPrefix("## ") && !lines[endIdx].hasPrefix("### ") {
+            let trimmed = lines[endIdx].trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("•") || trimmed.hasPrefix("◦") || trimmed.hasPrefix("▪") {
                 let bulletText = String(trimmed.dropFirst(1)).trimmingCharacters(in: .whitespaces)
-                // Find matching item and un-incorporate it
                 if let items = try? Queries.getAllItemsForDoc(docId: docId),
                    let item = items.first(where: { $0.text == bulletText && $0.incorporatedIntoDoc }) {
                     try? Queries.markItemUnincorporated(id: item.id)
                 }
             }
-        }
-
-        lines.removeSubrange(startIdx..<endIdx)
-        content = lines.joined(separator: "\n")
-        onReload()
-        parseHeadings()
-        deleteTarget = nil
-    }
-
-    private func showMoveOptions() {
-        // For now, just keep manual text as uncategorized at the bottom
-        guard let heading = deleteTarget else { return }
-        var lines = content.components(separatedBy: "\n")
-        let startIdx = heading.lineIndex
-        var endIdx = startIdx + 1
-
-        while endIdx < lines.count && !lines[endIdx].hasPrefix("#") {
             endIdx += 1
         }
 
-        // Keep manual text lines, remove heading and bullet lines
-        let sectionLines = Array(lines[startIdx+1..<endIdx])
-        let manualLines = sectionLines.filter { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            return !trimmed.isEmpty && !trimmed.hasPrefix("•")
-        }
-
-        // Un-incorporate bullet items
-        let bulletLines = sectionLines.filter { $0.trimmingCharacters(in: .whitespaces).hasPrefix("•") }
-        for line in bulletLines {
-            let bulletText = String(line.trimmingCharacters(in: .whitespaces).dropFirst(1)).trimmingCharacters(in: .whitespaces)
-            if let items = try? Queries.getAllItemsForDoc(docId: docId),
-               let item = items.first(where: { $0.text == bulletText && $0.incorporatedIntoDoc }) {
-                try? Queries.markItemUnincorporated(id: item.id)
-            }
-        }
-
         lines.removeSubrange(startIdx..<endIdx)
-        // Append manual text at end
-        if !manualLines.isEmpty {
-            lines.append(contentsOf: [""] + manualLines)
-        }
+        // Clean up extra blank lines
         content = lines.joined(separator: "\n")
+            .replacingOccurrences(of: "\n\n\n", with: "\n\n")
+
+        onSave()
         onReload()
         parseHeadings()
         deleteTarget = nil
@@ -2020,53 +1321,58 @@ struct OutlineEditorView: View {
         var reordered = headings
         reordered.move(fromOffsets: source, toOffset: destination)
 
-        // Rebuild content based on new heading order
-        var lines = content.components(separatedBy: "\n")
-        var sections: [(heading: String, content: [String])] = []
+        let lines = content.components(separatedBy: "\n")
 
-        // Parse sections
-        var currentHeading: String? = nil
-        var currentContent: [String] = []
+        // Parse sections: each section = heading line + content lines until next heading
+        struct Section {
+            let heading: String
+            var content: [String]
+        }
+
+        var sections: [Section] = []
         var preamble: [String] = []
+        var currentSection: Section? = nil
 
         for line in lines {
-            if line.hasPrefix("#") {
-                if let h = currentHeading {
-                    sections.append((heading: h, content: currentContent))
-                } else {
-                    preamble = currentContent
-                }
-                currentHeading = line
-                currentContent = []
+            if line.hasPrefix("## ") || line.hasPrefix("### ") {
+                if let sec = currentSection { sections.append(sec) }
+                else { /* preamble already collected */ }
+                currentSection = Section(heading: line, content: [])
             } else {
-                currentContent.append(line)
+                if currentSection != nil {
+                    currentSection!.content.append(line)
+                } else {
+                    preamble.append(line)
+                }
             }
         }
-        if let h = currentHeading {
-            sections.append((heading: h, content: currentContent))
-        }
+        if let sec = currentSection { sections.append(sec) }
 
-        // Reorder sections to match new heading order
-        var newSections: [(heading: String, content: [String])] = []
+        // Reorder to match new heading order
+        var newSections: [Section] = []
         for heading in reordered {
             if let idx = sections.firstIndex(where: { sec in
-                let clean = sec.heading.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces)
+                let clean = sec.heading
+                    .replacingOccurrences(of: "### ", with: "")
+                    .replacingOccurrences(of: "## ", with: "")
+                    .trimmingCharacters(in: .whitespaces)
                 return clean.lowercased() == heading.text.lowercased()
             }) {
                 newSections.append(sections[idx])
                 sections.remove(at: idx)
             }
         }
-        // Append any remaining sections not matched
         newSections.append(contentsOf: sections)
 
-        // Rebuild content
+        // Rebuild
         var result = preamble
         for section in newSections {
             result.append(section.heading)
             result.append(contentsOf: section.content)
         }
         content = result.joined(separator: "\n")
+
+        onSave()
         parseHeadings()
     }
 }
