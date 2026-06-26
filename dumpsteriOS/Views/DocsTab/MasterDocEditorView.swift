@@ -964,6 +964,12 @@ private enum DocTab: String, CaseIterable {
     case allItems = "All Items"
 }
 
+struct PlacementData: Identifiable {
+    let id = UUID()
+    let item: Item
+    let heading: String
+}
+
 struct MasterDocEditorView: View {
     let doc: MasterDoc
 
@@ -980,9 +986,8 @@ struct MasterDocEditorView: View {
     @State private var inboxItems: [Item] = []
     @State private var allItems: [Item] = []
     @State private var categoryFilter: Category? = nil
-    @State private var placementItem: Item? = nil
+    @State private var placementItem: PlacementData? = nil
     @State private var placementHeading: String? = nil
-    @State private var showPlacementPreview = false
     @State private var showOutline = false
 
     private var aiAvailable: Bool {
@@ -1055,11 +1060,9 @@ struct MasterDocEditorView: View {
         .sheet(isPresented: $showTagPicker) {
             DocTagPickerView(docId: doc.id, currentTagIds: Set(docTags.map(\.id))) { reload() }
         }
-        .sheet(isPresented: $showPlacementPreview) {
-            if let item = placementItem {
-                PlacementPreviewSheet(item: item, suggestedHeading: placementHeading ?? "Uncategorized", content: content) { heading in
-                    insertItemUnderHeading(item: item, heading: heading)
-                }
+        .sheet(item: $placementItem) { data in
+            PlacementPreviewSheet(item: data.item, suggestedHeading: data.heading, content: content) { heading in
+                insertItemUnderHeading(item: data.item, heading: heading)
             }
         }
         .sheet(isPresented: $showOutline) {
@@ -1313,13 +1316,9 @@ struct MasterDocEditorView: View {
 
     private func addItemToDoc(_ item: Item) {
         guard aiAvailable else {
-            placementItem = item
-            placementHeading = "General"
-            showPlacementPreview = true
+            placementItem = PlacementData(item: item, heading: "General")
             return
         }
-        placementItem = item
-        placementHeading = nil
 
         Task {
             if #available(iOS 26.0, *) {
@@ -1329,8 +1328,7 @@ struct MasterDocEditorView: View {
 
                 if headings.isEmpty {
                     await MainActor.run {
-                        placementHeading = "General"
-                        showPlacementPreview = true
+                        placementItem = PlacementData(item: item, heading: "General")
                     }
                     return
                 }
@@ -1338,13 +1336,11 @@ struct MasterDocEditorView: View {
                 do {
                     let suggested = try await AIService.suggestHeading(for: item.text, existingHeadings: headings)
                     await MainActor.run {
-                        placementHeading = suggested
-                        showPlacementPreview = true
+                        placementItem = PlacementData(item: item, heading: suggested)
                     }
                 } catch {
                     await MainActor.run {
-                        placementHeading = "General"
-                        showPlacementPreview = true
+                        placementItem = PlacementData(item: item, heading: "General")
                     }
                 }
             }
@@ -1352,7 +1348,9 @@ struct MasterDocEditorView: View {
     }
 
     private func insertItemUnderHeading(item: Item, heading: String) {
-        let lines = content.components(separatedBy: "\n")
+        // Work in plain text for insertion logic
+        var plain = plainTextContent()
+        let lines = plain.components(separatedBy: "\n")
         let headingIndex = lines.firstIndex { line in
             let clean = line.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces)
             return clean.lowercased() == heading.lowercased()
@@ -1365,13 +1363,24 @@ struct MasterDocEditorView: View {
             }
             var mutableLines = lines
             mutableLines.insert("• \(item.text)", at: insertAt)
-            content = mutableLines.joined(separator: "\n")
+            plain = mutableLines.joined(separator: "\n")
         } else {
-            content += content.isEmpty ? "## \(heading)\n• \(item.text)" : "\n\n## \(heading)\n• \(item.text)"
+            plain += plain.isEmpty ? "## \(heading)\n• \(item.text)" : "\n\n## \(heading)\n• \(item.text)"
         }
 
+        // Convert back to RTF so headings render as formatted text
+        content = MarkdownToRTF.convert(plain)
         try? Queries.markItemIncorporated(id: item.id)
         reload()
+    }
+
+    private func plainTextContent() -> String {
+        if content.hasPrefix("{\\rtf"),
+           let data = content.data(using: .utf8),
+           let attrStr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+            return attrStr.string
+        }
+        return content
     }
 
     // MARK: - Sort Trash (Batch)
@@ -1719,7 +1728,8 @@ struct OutlineEditorView: View {
     }
 
     private func parseHeadings() {
-        let lines = content.components(separatedBy: "\n")
+        let plain = plainText()
+        let lines = plain.components(separatedBy: "\n")
         headings = lines.enumerated().compactMap { index, line in
             if line.hasPrefix("### ") {
                 return OutlineHeading(text: String(line.dropFirst(4)).trimmingCharacters(in: .whitespaces), level: 2, lineIndex: index)
@@ -1738,13 +1748,25 @@ struct OutlineEditorView: View {
         let prefix = newIsSubheading ? "### " : "## "
         let headingLine = "\(prefix)\(text)"
 
-        if content.isEmpty {
-            content = headingLine
+        // Work in plain text, then convert back to RTF
+        var plain = plainText()
+        if plain.isEmpty {
+            plain = headingLine
         } else {
-            content += "\n\n\(headingLine)"
+            plain += "\n\n\(headingLine)"
         }
+        content = MarkdownToRTF.convert(plain)
         newHeadingText = ""
         parseHeadings()
+    }
+
+    private func plainText() -> String {
+        if content.hasPrefix("{\\rtf"),
+           let data = content.data(using: .utf8),
+           let attrStr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+            return attrStr.string
+        }
+        return content
     }
 
     private func prepareDelete(_ heading: OutlineHeading) {
