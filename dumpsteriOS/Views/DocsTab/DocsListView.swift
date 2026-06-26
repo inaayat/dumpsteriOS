@@ -7,7 +7,7 @@ struct DocsListView: View {
     @State private var pendingMerge: (source: MasterDoc, target: MasterDoc)? = nil
 
     var body: some View {
-        ScrollView {
+        List {
             if docs.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "doc.text")
@@ -21,36 +21,43 @@ struct DocsListView: View {
                         .foregroundStyle(Theme.textMuted.opacity(0.7))
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.top, 60)
+                .padding(.top, 40)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             } else {
-                LazyVStack(spacing: 10) {
-                    ForEach(docs, id: \.doc.id) { entry in
-                        NavigationLink(value: entry.doc) {
-                            docCard(entry.doc, tags: entry.tags)
+                ForEach(docs, id: \.doc.id) { entry in
+                    NavigationLink(value: entry.doc) {
+                        docCard(entry.doc, tags: entry.tags)
+                    }
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            try? Queries.deleteMasterDoc(id: entry.doc.id)
+                            reload()
+                        } label: {
+                            Label("Delete", systemImage: "trash")
                         }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                try? Queries.deleteMasterDoc(id: entry.doc.id)
-                                reload()
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                            Menu("Merge Into...") {
-                                ForEach(docs.filter { $0.doc.id != entry.doc.id }, id: \.doc.id) { target in
-                                    Button(target.doc.title) {
-                                        pendingMerge = (source: entry.doc, target: target.doc)
-                                    }
+                    }
+                    .contextMenu {
+                        Menu("Merge Into...") {
+                            ForEach(docs.filter { $0.doc.id != entry.doc.id }, id: \.doc.id) { target in
+                                Button(target.doc.title) {
+                                    pendingMerge = (source: entry.doc, target: target.doc)
                                 }
                             }
                         }
+                        Button(role: .destructive) {
+                            try? Queries.deleteMasterDoc(id: entry.doc.id)
+                            reload()
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
             }
         }
-        .background(Theme.canvas)
+        .listStyle(.plain)
         .navigationTitle("Docs")
         .navigationDestination(for: MasterDoc.self) { doc in
             MasterDocEditorView(doc: doc)
