@@ -983,6 +983,7 @@ struct MasterDocEditorView: View {
     @State private var placementItem: Item? = nil
     @State private var placementHeading: String? = nil
     @State private var showPlacementPreview = false
+    @State private var showOutline = false
 
     private var aiAvailable: Bool {
         if #available(iOS 26.0, *) { return AIService.isAvailable }
@@ -1037,6 +1038,10 @@ struct MasterDocEditorView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 14) {
+                    Button { showOutline = true } label: {
+                        Image(systemName: "list.bullet.indent")
+                            .font(.system(size: 13))
+                    }
                     Button {
                         if isEditingTitle { commitTitleEdit() }
                         else { editedTitle = title; isEditingTitle = true }
@@ -1056,6 +1061,9 @@ struct MasterDocEditorView: View {
                     insertItemUnderHeading(item: item, heading: heading)
                 }
             }
+        }
+        .sheet(isPresented: $showOutline) {
+            OutlineEditorView(content: $content, docId: doc.id, onReload: { reload() })
         }
         .onAppear {
             content = doc.content
@@ -1600,5 +1608,288 @@ struct HeadingPickerView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium])
+    }
+}
+
+// MARK: - Outline Editor
+
+struct OutlineEditorView: View {
+    @Binding var content: String
+    let docId: String
+    var onReload: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var headings: [OutlineHeading] = []
+    @State private var newHeadingText = ""
+    @State private var newIsSubheading = false
+    @State private var deleteTarget: OutlineHeading? = nil
+    @State private var manualTextUnderDelete: [String] = []
+    @State private var moveTarget: String? = nil
+    @State private var showDeleteAlert = false
+
+    struct OutlineHeading: Identifiable {
+        let id = UUID()
+        var text: String
+        var level: Int
+        var lineIndex: Int
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Add new heading
+                HStack(spacing: 8) {
+                    Toggle("Sub", isOn: $newIsSubheading)
+                        .font(.inter(12))
+                        .toggleStyle(.button)
+                        .tint(Theme.accent)
+                    TextField("New category name", text: $newHeadingText)
+                        .font(.inter(14))
+                        .submitLabel(.done)
+                        .onSubmit { addHeading() }
+                    Button { addHeading() } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(Theme.accent)
+                    }
+                    .disabled(newHeadingText.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                .padding(14)
+                .background(Theme.cardBg)
+                .overlay(Rectangle().fill(Theme.border).frame(height: 0.5), alignment: .bottom)
+
+                // Headings list
+                List {
+                    ForEach(headings) { heading in
+                        HStack(spacing: 8) {
+                            if heading.level > 1 {
+                                Rectangle()
+                                    .fill(Theme.accent.opacity(0.3))
+                                    .frame(width: 2, height: 20)
+                                    .padding(.leading, CGFloat((heading.level - 1) * 16))
+                            }
+                            Text(heading.text)
+                                .font(.inter(heading.level == 1 ? 15 : 13, weight: heading.level == 1 ? .semibold : .medium))
+                                .foregroundStyle(Theme.textPrimary)
+                            Spacer()
+                            Button {
+                                prepareDelete(heading)
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.red.opacity(0.6))
+                            }
+                        }
+                    }
+                    .onMove { from, to in
+                        moveHeading(from: from, to: to)
+                    }
+                }
+                .listStyle(.plain)
+            }
+            .background(Theme.canvas)
+            .navigationTitle("Outline")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    EditButton()
+                }
+            }
+            .alert("Delete Category", isPresented: $showDeleteAlert) {
+                if !manualTextUnderDelete.isEmpty {
+                    Button("Delete text too", role: .destructive) { confirmDelete(keepManualText: false) }
+                    Button("Move text to...") { showMoveOptions() }
+                    Button("Cancel", role: .cancel) { deleteTarget = nil }
+                } else {
+                    Button("Delete", role: .destructive) { confirmDelete(keepManualText: false) }
+                    Button("Cancel", role: .cancel) { deleteTarget = nil }
+                }
+            } message: {
+                if !manualTextUnderDelete.isEmpty {
+                    Text("This category has \(manualTextUnderDelete.count) line(s) of manual text. Items from inbox will return to inbox.")
+                } else {
+                    Text("Items filed under this category will return to inbox.")
+                }
+            }
+            .onAppear { parseHeadings() }
+        }
+    }
+
+    private func parseHeadings() {
+        let lines = content.components(separatedBy: "\n")
+        headings = lines.enumerated().compactMap { index, line in
+            if line.hasPrefix("### ") {
+                return OutlineHeading(text: String(line.dropFirst(4)).trimmingCharacters(in: .whitespaces), level: 2, lineIndex: index)
+            } else if line.hasPrefix("## ") {
+                return OutlineHeading(text: String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces), level: 1, lineIndex: index)
+            } else if line.hasPrefix("# ") {
+                return OutlineHeading(text: String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces), level: 1, lineIndex: index)
+            }
+            return nil
+        }
+    }
+
+    private func addHeading() {
+        let text = newHeadingText.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
+        let prefix = newIsSubheading ? "### " : "## "
+        let headingLine = "\(prefix)\(text)"
+
+        if content.isEmpty {
+            content = headingLine
+        } else {
+            content += "\n\n\(headingLine)"
+        }
+        newHeadingText = ""
+        parseHeadings()
+    }
+
+    private func prepareDelete(_ heading: OutlineHeading) {
+        deleteTarget = heading
+        let lines = content.components(separatedBy: "\n")
+        let startIdx = heading.lineIndex + 1
+        var endIdx = startIdx
+
+        while endIdx < lines.count && !lines[endIdx].hasPrefix("#") {
+            endIdx += 1
+        }
+
+        let sectionLines = Array(lines[startIdx..<endIdx])
+        manualTextUnderDelete = sectionLines.filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            return !trimmed.isEmpty && !trimmed.hasPrefix("•")
+        }
+
+        // Un-incorporate items that have bullet markers
+        showDeleteAlert = true
+    }
+
+    private func confirmDelete(keepManualText: Bool) {
+        guard let heading = deleteTarget else { return }
+        var lines = content.components(separatedBy: "\n")
+        let startIdx = heading.lineIndex
+        var endIdx = startIdx + 1
+
+        while endIdx < lines.count && !lines[endIdx].hasPrefix("#") {
+            endIdx += 1
+        }
+
+        // Un-incorporate items in this section
+        let sectionLines = Array(lines[startIdx+1..<endIdx])
+        for line in sectionLines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("•") {
+                let bulletText = String(trimmed.dropFirst(1)).trimmingCharacters(in: .whitespaces)
+                // Find matching item and un-incorporate it
+                if let items = try? Queries.getAllItemsForDoc(docId: docId),
+                   let item = items.first(where: { $0.text == bulletText && $0.incorporatedIntoDoc }) {
+                    try? Queries.markItemUnincorporated(id: item.id)
+                }
+            }
+        }
+
+        lines.removeSubrange(startIdx..<endIdx)
+        content = lines.joined(separator: "\n")
+        onReload()
+        parseHeadings()
+        deleteTarget = nil
+    }
+
+    private func showMoveOptions() {
+        // For now, just keep manual text as uncategorized at the bottom
+        guard let heading = deleteTarget else { return }
+        var lines = content.components(separatedBy: "\n")
+        let startIdx = heading.lineIndex
+        var endIdx = startIdx + 1
+
+        while endIdx < lines.count && !lines[endIdx].hasPrefix("#") {
+            endIdx += 1
+        }
+
+        // Keep manual text lines, remove heading and bullet lines
+        let sectionLines = Array(lines[startIdx+1..<endIdx])
+        let manualLines = sectionLines.filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            return !trimmed.isEmpty && !trimmed.hasPrefix("•")
+        }
+
+        // Un-incorporate bullet items
+        let bulletLines = sectionLines.filter { $0.trimmingCharacters(in: .whitespaces).hasPrefix("•") }
+        for line in bulletLines {
+            let bulletText = String(line.trimmingCharacters(in: .whitespaces).dropFirst(1)).trimmingCharacters(in: .whitespaces)
+            if let items = try? Queries.getAllItemsForDoc(docId: docId),
+               let item = items.first(where: { $0.text == bulletText && $0.incorporatedIntoDoc }) {
+                try? Queries.markItemUnincorporated(id: item.id)
+            }
+        }
+
+        lines.removeSubrange(startIdx..<endIdx)
+        // Append manual text at end
+        if !manualLines.isEmpty {
+            lines.append(contentsOf: [""] + manualLines)
+        }
+        content = lines.joined(separator: "\n")
+        onReload()
+        parseHeadings()
+        deleteTarget = nil
+    }
+
+    private func moveHeading(from source: IndexSet, to destination: Int) {
+        var reordered = headings
+        reordered.move(fromOffsets: source, toOffset: destination)
+
+        // Rebuild content based on new heading order
+        var lines = content.components(separatedBy: "\n")
+        var sections: [(heading: String, content: [String])] = []
+
+        // Parse sections
+        var currentHeading: String? = nil
+        var currentContent: [String] = []
+        var preamble: [String] = []
+
+        for line in lines {
+            if line.hasPrefix("#") {
+                if let h = currentHeading {
+                    sections.append((heading: h, content: currentContent))
+                } else {
+                    preamble = currentContent
+                }
+                currentHeading = line
+                currentContent = []
+            } else {
+                currentContent.append(line)
+            }
+        }
+        if let h = currentHeading {
+            sections.append((heading: h, content: currentContent))
+        }
+
+        // Reorder sections to match new heading order
+        var newSections: [(heading: String, content: [String])] = []
+        for heading in reordered {
+            let prefix = heading.level == 2 ? "### " : "## "
+            let altPrefix = heading.level == 1 ? "# " : "## "
+            if let idx = sections.firstIndex(where: { sec in
+                let clean = sec.heading.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces)
+                return clean.lowercased() == heading.text.lowercased()
+            }) {
+                newSections.append(sections[idx])
+                sections.remove(at: idx)
+            }
+        }
+        // Append any remaining sections not matched
+        newSections.append(contentsOf: sections)
+
+        // Rebuild content
+        var result = preamble
+        for section in newSections {
+            result.append(section.heading)
+            result.append(contentsOf: section.content)
+        }
+        content = result.joined(separator: "\n")
+        parseHeadings()
     }
 }

@@ -522,6 +522,12 @@ struct Queries {
         }
     }
 
+    static func markItemUnincorporated(id: String) throws {
+        try db.write { db in
+            try db.execute(sql: "UPDATE items SET incorporatedIntoDoc = 0 WHERE id = ?", arguments: [id])
+        }
+    }
+
     static func dismissItemFromDoc(id: String) throws {
         try db.write { db in
             try db.execute(sql: "UPDATE items SET dismissedFromDoc = 1 WHERE id = ?", arguments: [id])
