@@ -422,6 +422,16 @@ struct Queries {
         }
     }
 
+    static func getBulletCountForTag(tagName: String) throws -> Int {
+        let allDumps = try getAllDumps()
+        var count = 0
+        for dump in allDumps {
+            let bullets = DumpBullet.parse(from: dump.content)
+            count += bullets.filter { $0.tags.contains(tagName.lowercased()) }.count
+        }
+        return count
+    }
+
     // MARK: - Master Doc Tags (Multi-Tag Support)
 
     static func getTagsForDoc(docId: String) throws -> [Tag] {

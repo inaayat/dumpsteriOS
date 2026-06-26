@@ -5,6 +5,7 @@ struct TagsView: View {
     @State private var topLevelTags: [Tag] = []
     @State private var subTagsMap: [String: [Tag]] = [:]
     @State private var itemCounts: [String: Int] = [:]
+    @State private var bulletCounts: [String: Int] = [:]
     @State private var dropTargetId: String? = nil
     @State private var pendingMerge: (from: Tag, into: Tag)? = nil
     @State private var renamingTag: Tag? = nil
@@ -92,8 +93,10 @@ struct TagsView: View {
                     .font(.inter(15, weight: .medium))
                     .foregroundStyle(Theme.textPrimary)
                 Spacer()
-                Text("\(itemCounts[tag.id] ?? 0) items")
-                    .font(.inter(12))
+                let items = itemCounts[tag.id] ?? 0
+                let bullets = bulletCounts[tag.id] ?? 0
+                Text("\(items) items · \(bullets) bullets")
+                    .font(.inter(11))
                     .foregroundStyle(Theme.textMuted)
                 Image(systemName: "line.3.horizontal")
                     .font(.system(size: 12))
@@ -215,15 +218,19 @@ struct TagsView: View {
         let all = (try? Queries.getTopLevelTags()) ?? []
         var subs: [String: [Tag]] = [:]
         var counts: [String: Int] = [:]
+        var bCounts: [String: Int] = [:]
         for tag in all {
             subs[tag.id] = (try? Queries.getSubTags(parentTagId: tag.id)) ?? []
             counts[tag.id] = (try? Queries.getItemCountForTag(tagId: tag.id)) ?? 0
+            bCounts[tag.id] = (try? Queries.getBulletCountForTag(tagName: tag.name)) ?? 0
             for child in subs[tag.id] ?? [] {
                 counts[child.id] = (try? Queries.getItemCountForTag(tagId: child.id)) ?? 0
+                bCounts[child.id] = (try? Queries.getBulletCountForTag(tagName: child.name)) ?? 0
             }
         }
-        topLevelTags = all.sorted { (counts[$0.id] ?? 0) > (counts[$1.id] ?? 0) }
+        topLevelTags = all.sorted { ((counts[$0.id] ?? 0) + (bCounts[$0.id] ?? 0)) > ((counts[$1.id] ?? 0) + (bCounts[$1.id] ?? 0)) }
         subTagsMap = subs
         itemCounts = counts
+        bulletCounts = bCounts
     }
 }
