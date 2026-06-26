@@ -482,7 +482,7 @@ struct Queries {
                 SELECT DISTINCT i.* FROM items i
                 JOIN item_tags it ON it.itemId = i.id
                 JOIN master_doc_tags mdt ON mdt.tagId = it.tagId
-                WHERE mdt.docId = ? AND i.incorporatedIntoDoc = 0
+                WHERE mdt.docId = ? AND i.incorporatedIntoDoc = 0 AND i.dismissedFromDoc = 0
                 ORDER BY i.createdAt DESC
                 """, arguments: [docId])
         }
@@ -509,6 +509,18 @@ struct Queries {
     static func markItemIncorporated(id: String) throws {
         try db.write { db in
             try db.execute(sql: "UPDATE items SET incorporatedIntoDoc = 1 WHERE id = ?", arguments: [id])
+        }
+    }
+
+    static func dismissItemFromDoc(id: String) throws {
+        try db.write { db in
+            try db.execute(sql: "UPDATE items SET dismissedFromDoc = 1 WHERE id = ?", arguments: [id])
+        }
+    }
+
+    static func undismissItem(id: String) throws {
+        try db.write { db in
+            try db.execute(sql: "UPDATE items SET dismissedFromDoc = 0 WHERE id = ?", arguments: [id])
         }
     }
 

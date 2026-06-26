@@ -107,7 +107,13 @@ final class DatabaseManager: Sendable {
             }
         }
 
-        migrator.registerMigration("v4_multiTagDocs") { db in
+        migrator.registerMigration("v4_dismissedFromDoc") { db in
+            try db.alter(table: "items") { t in
+                t.add(column: "dismissedFromDoc", .boolean).notNull().defaults(to: false)
+            }
+        }
+
+        migrator.registerMigration("v5_multiTagDocs") { db in
             try db.create(table: "master_doc_tags") { t in
                 t.column("docId", .text).notNull().references("master_docs", onDelete: .cascade)
                 t.column("tagId", .text).notNull().references("tags", onDelete: .cascade)

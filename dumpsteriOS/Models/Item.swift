@@ -40,6 +40,7 @@ struct Item: Identifiable, Codable, Equatable {
     var urlTitle: String?
     var notes: String?
     var incorporatedIntoDoc: Bool
+    var dismissedFromDoc: Bool
     var createdAt: Date
 
     var isOverdue: Bool {
@@ -81,6 +82,7 @@ extension Item {
             urlTitle: urlTitle,
             notes: nil,
             incorporatedIntoDoc: false,
+            dismissedFromDoc: false,
             createdAt: Date()
         )
     }

@@ -1183,6 +1183,14 @@ struct MasterDocEditorView: View {
                                     .foregroundStyle(Theme.textPrimary)
                                     .lineLimit(2)
                                 Spacer()
+                                Button {
+                                    try? Queries.dismissItemFromDoc(id: item.id)
+                                    reload()
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundStyle(Theme.textMuted.opacity(0.4))
+                                }
                                 Button { addItemToDoc(item) } label: {
                                     Image(systemName: "plus.circle.fill")
                                         .font(.system(size: 18))
@@ -1231,6 +1239,17 @@ struct MasterDocEditorView: View {
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.system(size: 14))
                                     .foregroundStyle(Theme.successColor.opacity(0.5))
+                            } else if item.dismissedFromDoc {
+                                HStack(spacing: 6) {
+                                    Button { addItemToDoc(item) } label: {
+                                        Image(systemName: "plus.circle")
+                                            .font(.system(size: 14))
+                                            .foregroundStyle(Theme.accent.opacity(0.5))
+                                    }
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(Theme.textMuted.opacity(0.3))
+                                }
                             }
                         }
                         .padding(.horizontal, 14)
@@ -1354,10 +1373,27 @@ struct MasterDocEditorView: View {
         isSynthesizing = true
         aiError = nil
 
+        let bulletTexts = inboxItems.map(\.text)
+        let totalSize = content.count + bulletTexts.joined().count
+
         Task {
             do {
-                let bulletTexts = inboxItems.map(\.text)
-                let result = try await AIService.insertBulletsIntoDoc(existingContent: content, bullets: bulletTexts)
+                let result: String
+                if totalSize < 6000 {
+                    // Small doc: full organize — AI creates categories and files everything
+                    result = try await AIService.synthesizeMasterDoc(existingContent: content, bullets: bulletTexts.joined(separator: "\n"))
+                } else {
+                    // Large doc: only use existing headers to place items
+                    let headings = content.components(separatedBy: "\n")
+                        .filter { $0.hasPrefix("##") || $0.hasPrefix("# ") }
+                        .map { $0.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces) }
+
+                    if headings.isEmpty {
+                        throw AIService.AIError.documentTooLarge
+                    }
+                    result = try await AIService.insertBulletsIntoDoc(existingContent: content, bullets: bulletTexts)
+                }
+
                 await MainActor.run {
                     content = result
                     for item in inboxItems {
