@@ -7,67 +7,72 @@ struct DocsListView: View {
     @State private var pendingMerge: (source: MasterDoc, target: MasterDoc)? = nil
 
     var body: some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Master Docs are living documents that collect and organize your thoughts by topic. Assign tags to a doc, and any bullets or items with those tags will appear in the doc's inbox — ready to be sorted under category headings. Use #save in your dump to file a bullet directly, or tap Sort Trash to batch-organize your inbox with AI.")
-                        .font(.inter(12))
-                        .foregroundStyle(Theme.textMuted)
-                }
-                .padding(.vertical, 4)
-                .listRowSeparator(.hidden)
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                // How it works card
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "doc.text.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.resourceColor)
+                        Text("How Master Docs Work")
+                            .font(.inter(14, weight: .bold))
+                            .foregroundStyle(Theme.textPrimary)
+                    }
 
-            if docs.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 36))
-                        .foregroundStyle(Theme.textMuted.opacity(0.4))
-                    Text("No documents yet")
-                        .font(.inter(15, weight: .medium))
-                        .foregroundStyle(Theme.textMuted)
-                    Text("Tap + to create one, or use #save in your dump.")
-                        .font(.inter(12))
-                        .foregroundStyle(Theme.textMuted.opacity(0.7))
+                    VStack(alignment: .leading, spacing: 6) {
+                        guideRow(icon: "tag.fill", color: Theme.accent, text: "Assign tags — bullets and items with those tags flow into the doc's inbox")
+                        guideRow(icon: "tray.and.arrow.down.fill", color: Theme.brainstormColor, text: "Inbox collects unincorporated items — add them one by one or batch with Sort Trash")
+                        guideRow(icon: "text.badge.plus", color: Theme.successColor, text: "Use #save in your dump to file a bullet directly into its doc")
+                        guideRow(icon: "list.bullet.indent", color: Theme.resourceColor, text: "Organize with category headings — AI places items under the right one")
+                    }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 40)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-            } else {
-                ForEach(docs, id: \.doc.id) { entry in
-                    NavigationLink(value: entry.doc) {
-                        docCard(entry.doc, tags: entry.tags)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.resourceColor.opacity(0.04), in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+                .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.resourceColor.opacity(0.15), lineWidth: 1))
+
+                // Docs list
+                if docs.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 32))
+                            .foregroundStyle(Theme.accent.opacity(0.4))
+                        Text("Tap + to create your first doc")
+                            .font(.inter(13))
+                            .foregroundStyle(Theme.textMuted)
                     }
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            try? Queries.deleteMasterDoc(id: entry.doc.id)
-                            reload()
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                    }
-                    .contextMenu {
-                        Menu("Merge Into...") {
-                            ForEach(docs.filter { $0.doc.id != entry.doc.id }, id: \.doc.id) { target in
-                                Button(target.doc.title) {
-                                    pendingMerge = (source: entry.doc, target: target.doc)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 30)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(docs, id: \.doc.id) { entry in
+                            NavigationLink(value: entry.doc) {
+                                docCard(entry.doc, tags: entry.tags)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Menu("Merge Into...") {
+                                    ForEach(docs.filter { $0.doc.id != entry.doc.id }, id: \.doc.id) { target in
+                                        Button(target.doc.title) {
+                                            pendingMerge = (source: entry.doc, target: target.doc)
+                                        }
+                                    }
+                                }
+                                Button(role: .destructive) {
+                                    try? Queries.deleteMasterDoc(id: entry.doc.id)
+                                    reload()
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
                                 }
                             }
                         }
-                        Button(role: .destructive) {
-                            try? Queries.deleteMasterDoc(id: entry.doc.id)
-                            reload()
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
                     }
                 }
             }
+            .padding(16)
         }
-        .listStyle(.plain)
+        .background(Theme.canvas)
         .navigationTitle("Docs")
         .navigationDestination(for: MasterDoc.self) { doc in
             MasterDocEditorView(doc: doc)
@@ -99,20 +104,38 @@ struct DocsListView: View {
         .onAppear { reload() }
     }
 
+    // MARK: - Components
+
+    private func guideRow(icon: String, color: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .foregroundStyle(color)
+                .frame(width: 16)
+                .padding(.top, 2)
+            Text(text)
+                .font(.inter(12))
+                .foregroundStyle(Theme.textSecondary)
+        }
+    }
+
     private func docCard(_ doc: MasterDoc, tags: [Tag]) -> some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: "doc.text.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(Theme.resourceColor.opacity(0.6))
+            VStack(alignment: .leading, spacing: 4) {
                 Text(doc.title)
-                    .font(.inter(16, weight: .semibold))
+                    .font(.inter(15, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
-                HStack(spacing: 6) {
-                    ForEach(tags.prefix(4)) { tag in
+                HStack(spacing: 5) {
+                    ForEach(tags.prefix(3)) { tag in
                         Text("#\(tag.name)")
                             .font(.inter(11, weight: .medium))
                             .foregroundStyle(Theme.accent)
                     }
-                    if tags.count > 4 {
-                        Text("+\(tags.count - 4)")
+                    if tags.count > 3 {
+                        Text("+\(tags.count - 3)")
                             .font(.inter(10))
                             .foregroundStyle(Theme.textMuted)
                     }
@@ -120,30 +143,29 @@ struct DocsListView: View {
             }
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.textMuted.opacity(0.4))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.textMuted.opacity(0.3))
         }
         .padding(14)
         .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
         .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.border, lineWidth: 0.5))
     }
 
+    // MARK: - Actions
+
     private func mergeDocs(source: MasterDoc, into target: MasterDoc) {
-        // Move source tags to target
         let sourceTags = (try? Queries.getTagsForDoc(docId: source.id)) ?? []
         for tag in sourceTags {
             try? Queries.removeTagFromDoc(docId: source.id, tagId: tag.id)
             try? Queries.addTagToDoc(docId: target.id, tagId: tag.id)
         }
 
-        // Append source content to target
         if !source.content.isEmpty {
             let separator = target.content.isEmpty ? "" : "\n\n---\n\n"
             let combined = target.content + separator + source.content
             try? Queries.upsertMasterDoc(tagId: target.tagId, content: combined, title: target.title)
         }
 
-        // Delete source doc
         try? Queries.deleteMasterDoc(id: source.id)
         reload()
     }
