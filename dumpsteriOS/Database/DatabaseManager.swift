@@ -114,13 +114,13 @@ final class DatabaseManager: Sendable {
         }
 
         migrator.registerMigration("v5_multiTagDocs") { db in
-            try db.create(table: "master_doc_tags") { t in
+            try db.create(table: "master_doc_tags", ifNotExists: true) { t in
                 t.column("docId", .text).notNull().references("master_docs", onDelete: .cascade)
                 t.column("tagId", .text).notNull().references("tags", onDelete: .cascade)
                 t.primaryKey(["docId", "tagId"])
             }
-            try db.create(index: "idx_doc_tags_doc", on: "master_doc_tags", columns: ["docId"])
-            try db.create(index: "idx_doc_tags_tag", on: "master_doc_tags", columns: ["tagId"])
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS idx_doc_tags_doc ON master_doc_tags(docId)")
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS idx_doc_tags_tag ON master_doc_tags(tagId)")
 
             // Migrate existing master_docs.tagId into junction table
             let rows = try Row.fetchAll(db, sql: "SELECT id, tagId FROM master_docs")
