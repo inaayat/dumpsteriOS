@@ -1353,41 +1353,7 @@ struct MasterDocEditorView: View {
     private func insertItemUnderHeading(item: Item, heading: String) {
         let attrStr = loadAsAttributedString()
         let fullText = attrStr.string
-        let lines = fullText.components(separatedBy: "\n")
 
-        // Find heading by looking for bold/large text matching the heading name
-        var headingLineEnd: Int? = nil
-        var searchPos = 0
-        for line in lines {
-            let lineEnd = searchPos + line.count
-            if line.trimmingCharacters(in: .whitespaces).lowercased() == heading.lowercased() {
-                // Check if this line has a heading-sized font
-                let range = NSRange(location: searchPos, length: line.count)
-                var isHeading = false
-                attrStr.enumerateAttribute(.font, in: range) { value, _, _ in
-                    if let font = value as? UIFont, font.pointSize >= 18 {
-                        isHeading = true
-                    }
-                }
-                if isHeading {
-                    headingLineEnd = lineEnd
-                    // Find end of this section (next heading or end)
-                    var nextLineStart = lineEnd + 1
-                    for nextLine in lines.dropFirst(lines.prefix(while: { _ in
-                        searchPos += 0; return false
-                    }).count) {
-                        _ = nextLine
-                    }
-                    // Find insertion point: after all content lines until next heading
-                    let remaining = lines.suffix(from: lines.firstIndex(where: { _ in false }) ?? lines.endIndex)
-                    _ = remaining
-                    break
-                }
-            }
-            searchPos = lineEnd + 1
-        }
-
-        // Simpler approach: find the heading text, then insert bullet after the section
         let result = NSMutableAttributedString(attributedString: attrStr)
         let headingFont = UIFont(name: "Inter-Bold", size: 22) ?? .boldSystemFont(ofSize: 22)
         let bulletFont = UIFont(name: "Inter-Regular", size: 16) ?? .systemFont(ofSize: 16)
