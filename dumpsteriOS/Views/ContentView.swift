@@ -48,5 +48,12 @@ struct ContentView: View {
         )) {
             VoiceCaptureView()
         }
+        .onOpenURL { url in
+            if url.scheme == "dumpster" && url.host == "voice-bullet" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    voiceCoordinator.triggerCapture()
+                }
+            }
+        }
     }
 }

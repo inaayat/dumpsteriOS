@@ -13,10 +13,7 @@ struct AIService {
     // MARK: - Insert Bullets Into Doc
 
     static func insertBulletsIntoDoc(existingContent: String, bullets: [String]) async throws -> String {
-        // Extract just the headings from the existing doc
-        let headings = existingContent.components(separatedBy: "\n")
-            .filter { $0.hasPrefix("##") || $0.hasPrefix("# ") }
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+        let headings = DocHeadingExtractor.extractHeadings(from: existingContent)
 
         if headings.isEmpty && existingContent.isEmpty {
             // Empty doc — just categorize the bullets under a heading
@@ -151,6 +148,21 @@ struct AIService {
     }
 
     // MARK: - Suggest Heading for Item
+
+    static func rewriteBullet(_ text: String, forHeading heading: String) async throws -> String {
+        let session = LanguageModelSession(instructions: """
+            You rewrite a rough note into one clear, concise sentence for a document section.
+            Rules:
+            - Fix grammar, remove filler words, expand abbreviations
+            - Keep it short — one sentence, no more
+            - Don't add new information or context
+            - Match the tone of a professional knowledge doc
+            - Respond with ONLY the rewritten sentence, nothing else
+            """)
+        let prompt = "Section: \(heading)\nNote: \(text)"
+        let response = try await session.respond(to: prompt)
+        return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     static func suggestHeading(for text: String, existingHeadings: [String]) async throws -> String {
         let session = LanguageModelSession(instructions: "You categorize a note under an existing heading. Respond with ONLY the heading name, nothing else.")

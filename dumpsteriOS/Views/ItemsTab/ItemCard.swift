@@ -4,13 +4,6 @@ struct ItemCard: View {
     let item: Item
     var tags: [Tag] = []
 
-    private var displayText: String {
-        item.text
-            .replacingOccurrences(of: #"#[\w\-]+"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: "  ", with: " ")
-            .trimmingCharacters(in: .whitespaces)
-    }
-
     var body: some View {
         HStack(spacing: 10) {
             if item.category == .action {
@@ -26,7 +19,7 @@ struct ItemCard: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(displayText)
+                Text(item.displayText)
                     .font(.inter(14))
                     .foregroundStyle(item.done ? Theme.textMuted : Theme.textPrimary)
                     .strikethrough(item.done)

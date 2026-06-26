@@ -306,14 +306,27 @@ struct Queries {
             var taggedGroups: [String: (tag: Tag, items: [Item])] = [:]
             var untagged: [Item] = []
 
-            for item in allItems {
-                let tags = try Tag.fetchAll(db, sql: """
-                    SELECT t.* FROM tags t
-                    JOIN item_tags it ON it.tagId = t.id
-                    WHERE it.itemId = ?
+            // Batch: fetch all item-tag pairs in one JOIN instead of N+1 queries
+            let itemIds = allItems.map { $0.id }
+            var tagsByItemId: [String: [Tag]] = [:]
+            if !itemIds.isEmpty {
+                let placeholders = itemIds.map { _ in "?" }.joined(separator: ",")
+                let rows = try Row.fetchAll(db, sql: """
+                    SELECT it.itemId, t.id as tagId, t.name, t.createdAt
+                    FROM item_tags it
+                    JOIN tags t ON t.id = it.tagId
+                    WHERE it.itemId IN (\(placeholders))
                     ORDER BY t.name
-                    """, arguments: [item.id])
+                    """, arguments: StatementArguments(itemIds))
+                for row in rows {
+                    let itemId: String = row["itemId"]
+                    let tag = Tag(id: row["tagId"], name: row["name"], createdAt: row["createdAt"])
+                    tagsByItemId[itemId, default: []].append(tag)
+                }
+            }
 
+            for item in allItems {
+                let tags = tagsByItemId[item.id] ?? []
                 if tags.isEmpty {
                     untagged.append(item)
                 } else {
@@ -393,6 +406,16 @@ struct Queries {
         }
     }
 
+    static func saveMasterDoc(id: String, content: String, title: String) throws {
+        try db.write { db in
+            guard var doc = try MasterDoc.filter(MasterDoc.Columns.id == id).fetchOne(db) else { return }
+            doc.content = content
+            doc.title = title
+            doc.updatedAt = Date()
+            try doc.update(db)
+        }
+    }
+
     static func upsertMasterDoc(tagId: String, content: String, title: String) throws {
         try db.write { db in
             // First check junction table for existing doc
@@ -423,13 +446,23 @@ struct Queries {
     }
 
     static func getBulletCountForTag(tagName: String) throws -> Int {
-        let allDumps = try getAllDumps()
-        var count = 0
-        for dump in allDumps {
-            let bullets = DumpBullet.parse(from: dump.content)
-            count += bullets.filter { $0.tags.contains(tagName.lowercased()) }.count
+        try getAllBulletCounts(tagNames: [tagName])[tagName] ?? 0
+    }
+
+    static func getAllBulletCounts(tagNames: [String]) throws -> [String: Int] {
+        try db.read { db in
+            let contents = try String.fetchAll(db, sql: "SELECT content FROM daily_dumps")
+            let lowerNames = tagNames.map { $0.lowercased() }
+            var counts: [String: Int] = [:]
+            for content in contents {
+                let lines = content.components(separatedBy: "\n")
+                for lowerTag in lowerNames {
+                    let needle = "#\(lowerTag)"
+                    counts[lowerTag, default: 0] += lines.filter { $0.lowercased().contains(needle) }.count
+                }
+            }
+            return counts
         }
-        return count
     }
 
     // MARK: - Master Doc Tags (Multi-Tag Support)

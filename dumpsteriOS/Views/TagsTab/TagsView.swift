@@ -218,16 +218,31 @@ struct TagsView: View {
         let all = (try? Queries.getTopLevelTags()) ?? []
         var subs: [String: [Tag]] = [:]
         var counts: [String: Int] = [:]
-        var bCounts: [String: Int] = [:]
+
+        // Collect all tag names (top-level + children) for a single bulk bullet count pass
+        var allTagNames: [String] = []
         for tag in all {
             subs[tag.id] = (try? Queries.getSubTags(parentTagId: tag.id)) ?? []
             counts[tag.id] = (try? Queries.getItemCountForTag(tagId: tag.id)) ?? 0
-            bCounts[tag.id] = (try? Queries.getBulletCountForTag(tagName: tag.name)) ?? 0
+            allTagNames.append(tag.name)
             for child in subs[tag.id] ?? [] {
                 counts[child.id] = (try? Queries.getItemCountForTag(tagId: child.id)) ?? 0
-                bCounts[child.id] = (try? Queries.getBulletCountForTag(tagName: child.name)) ?? 0
+                allTagNames.append(child.name)
             }
         }
+
+        // Single pass over all dumps for bullet counts
+        let rawBulletCounts = (try? Queries.getAllBulletCounts(tagNames: allTagNames)) ?? [:]
+
+        // Map tag name → tag id for bullet count lookup
+        var bCounts: [String: Int] = [:]
+        for tag in all {
+            bCounts[tag.id] = rawBulletCounts[tag.name.lowercased()] ?? 0
+            for child in subs[tag.id] ?? [] {
+                bCounts[child.id] = rawBulletCounts[child.name.lowercased()] ?? 0
+            }
+        }
+
         topLevelTags = all.sorted { ((counts[$0.id] ?? 0) + (bCounts[$0.id] ?? 0)) > ((counts[$1.id] ?? 0) + (bCounts[$1.id] ?? 0)) }
         subTagsMap = subs
         itemCounts = counts

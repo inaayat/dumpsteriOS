@@ -10,6 +10,8 @@ struct DumpView: View {
     @State private var attentionItems: [Item] = []
     @FocusState private var isEditorFocused: Bool
     @State private var tagEditorLineIndex: Int? = nil
+    @State private var editingLineIndex: Int? = nil
+    @State private var editingLineText: String = ""
 
     var body: some View {
         ScrollView {
@@ -351,12 +353,30 @@ struct DumpView: View {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 if !trimmed.isEmpty {
                     HStack(alignment: .top, spacing: 8) {
-                        Text(trimmed)
-                            .font(.inter(14))
-                            .foregroundStyle(Theme.textPrimary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                            .onTapGesture { isEditorFocused = true }
+                        if editingLineIndex == index {
+                            TextField("", text: $editingLineText, axis: .vertical)
+                                .font(.inter(14))
+                                .foregroundStyle(Theme.textPrimary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .submitLabel(.done)
+                                .onSubmit { commitLineEdit(at: index) }
+                                .onChange(of: editingLineText) { _, newVal in
+                                    if newVal.contains("\n") {
+                                        editingLineText = newVal.replacingOccurrences(of: "\n", with: "")
+                                        commitLineEdit(at: index)
+                                    }
+                                }
+                        } else {
+                            Text(trimmed)
+                                .font(.inter(14))
+                                .foregroundStyle(Theme.textPrimary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    editingLineIndex = index
+                                    editingLineText = trimmed
+                                }
+                        }
                         Button {
                             tagEditorLineIndex = index
                         } label: {
@@ -376,6 +396,22 @@ struct DumpView: View {
         }
         .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
         .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.border, lineWidth: 1))
+    }
+
+    private func commitLineEdit(at index: Int) {
+        var lines = content.components(separatedBy: "\n")
+        guard index < lines.count else { editingLineIndex = nil; return }
+        let newText = editingLineText.trimmingCharacters(in: .whitespaces)
+        if newText.isEmpty {
+            lines.remove(at: index)
+        } else {
+            lines[index] = newText
+        }
+        content = lines.joined(separator: "\n")
+        editingLineIndex = nil
+        editingLineText = ""
+        saveDraft()
+        if !newText.isEmpty { processLineIfNeeded(newText) }
     }
 
     private func hasTagsInLine(_ line: String) -> Bool {

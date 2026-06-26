@@ -5,5 +5,6 @@ import SwiftUI
 struct DumpsterWidgetBundle: WidgetBundle {
     var body: some Widget {
         DumpsterWidget()
+        VoiceBulletControl()
     }
 }

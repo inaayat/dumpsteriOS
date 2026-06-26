@@ -43,6 +43,12 @@ struct Item: Identifiable, Codable, Equatable {
     var dismissedFromDoc: Bool
     var createdAt: Date
 
+    var displayText: String {
+        text.replacingOccurrences(of: #"#[\w\-]+"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: "  ", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+    }
+
     var isOverdue: Bool {
         guard let dueDate, !done else { return false }
         return dueDate < Calendar.current.startOfDay(for: Date())

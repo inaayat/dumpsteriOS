@@ -7,6 +7,8 @@ struct VoiceBulletIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        // Delay lets the app finish presenting its UI before we show the sheet
+        try? await Task.sleep(nanoseconds: 350_000_000)
         VoiceCaptureCoordinator.shared.triggerCapture()
         return .result()
     }

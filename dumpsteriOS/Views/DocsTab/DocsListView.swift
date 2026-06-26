@@ -7,71 +7,84 @@ struct DocsListView: View {
     @State private var pendingMerge: (source: MasterDoc, target: MasterDoc)? = nil
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                // How it works card
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "doc.text.fill")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Theme.resourceColor)
-                        Text("How Master Docs Work")
-                            .font(.inter(14, weight: .bold))
-                            .foregroundStyle(Theme.textPrimary)
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        guideRow(icon: "tag.fill", color: Theme.accent, text: "Assign tags — bullets and items with those tags flow into the doc's inbox")
-                        guideRow(icon: "tray.and.arrow.down.fill", color: Theme.brainstormColor, text: "Inbox collects unincorporated items — add them one by one or batch with Sort Trash")
-                        guideRow(icon: "text.badge.plus", color: Theme.successColor, text: "Use #save in your dump to file a bullet directly into its doc")
-                        guideRow(icon: "list.bullet.indent", color: Theme.resourceColor, text: "Organize with category headings — AI places items under the right one")
-                    }
+        List {
+            // How it works card
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.text.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.resourceColor)
+                    Text("How Master Docs Work")
+                        .font(.inter(14, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
                 }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.resourceColor.opacity(0.04), in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
-                .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.resourceColor.opacity(0.15), lineWidth: 1))
 
-                // Docs list
-                if docs.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "plus.circle")
-                            .font(.system(size: 32))
-                            .foregroundStyle(Theme.accent.opacity(0.4))
-                        Text("Tap + to create your first doc")
-                            .font(.inter(13))
-                            .foregroundStyle(Theme.textMuted)
+                VStack(alignment: .leading, spacing: 6) {
+                    guideRow(icon: "tag.fill", color: Theme.accent, text: "Assign tags — bullets and items with those tags flow into the doc's inbox")
+                    guideRow(icon: "tray.and.arrow.down.fill", color: Theme.brainstormColor, text: "Inbox collects unincorporated items — add them one by one or batch with Sort Trash")
+                    guideRow(icon: "text.badge.plus", color: Theme.successColor, text: "Use #save in your dump to file a bullet directly into its doc")
+                    guideRow(icon: "list.bullet.indent", color: Theme.resourceColor, text: "Organize with category headings — AI places items under the right one")
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.resourceColor.opacity(0.04), in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+            .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).strokeBorder(Theme.resourceColor.opacity(0.15), lineWidth: 1))
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
+
+            // Docs list
+            if docs.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 32))
+                        .foregroundStyle(Theme.accent.opacity(0.4))
+                    Text("Tap + to create your first doc")
+                        .font(.inter(13))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 30)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                .listRowBackground(Color.clear)
+            } else {
+                ForEach(docs, id: \.doc.id) { entry in
+                    NavigationLink(value: entry.doc) {
+                        docCard(entry.doc, tags: entry.tags)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 30)
-                } else {
-                    VStack(spacing: 8) {
-                        ForEach(docs, id: \.doc.id) { entry in
-                            NavigationLink(value: entry.doc) {
-                                docCard(entry.doc, tags: entry.tags)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                Menu("Merge Into...") {
-                                    ForEach(docs.filter { $0.doc.id != entry.doc.id }, id: \.doc.id) { target in
-                                        Button(target.doc.title) {
-                                            pendingMerge = (source: entry.doc, target: target.doc)
-                                        }
-                                    }
-                                }
-                                Button(role: .destructive) {
-                                    try? Queries.deleteMasterDoc(id: entry.doc.id)
-                                    reload()
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                    .buttonStyle(.plain)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            try? Queries.deleteMasterDoc(id: entry.doc.id)
+                            reload()
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                    .contextMenu {
+                        Menu("Merge Into...") {
+                            ForEach(docs.filter { $0.doc.id != entry.doc.id }, id: \.doc.id) { target in
+                                Button(target.doc.title) {
+                                    pendingMerge = (source: entry.doc, target: target.doc)
                                 }
                             }
+                        }
+                        Button(role: .destructive) {
+                            try? Queries.deleteMasterDoc(id: entry.doc.id)
+                            reload()
+                        } label: {
+                            Label("Delete", systemImage: "trash")
                         }
                     }
                 }
             }
-            .padding(16)
         }
+        .listStyle(.plain)
         .background(Theme.canvas)
         .navigationTitle("Docs")
         .navigationDestination(for: MasterDoc.self) { doc in
@@ -142,9 +155,6 @@ struct DocsListView: View {
                 }
             }
             Spacer()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.textMuted.opacity(0.3))
         }
         .padding(14)
         .background(Theme.cardBg, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))

@@ -28,17 +28,16 @@ struct DumpsterWidgetView: View {
     var body: some View {
         switch family {
         case .accessoryCircular:
-            // Lock Screen circular widget
             ZStack {
                 AccessoryWidgetBackground()
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 20))
+                Image(systemName: "trash.fill")
+                    .font(.system(size: 18))
             }
+            .widgetURL(URL(string: "dumpster://voice-bullet")!)
         case .accessoryRectangular:
-            // Lock Screen rectangular widget
             HStack(spacing: 8) {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 16))
+                Image(systemName: "trash.fill")
+                    .font(.system(size: 14))
                 VStack(alignment: .leading) {
                     Text("Dumpster")
                         .font(.headline)
@@ -46,32 +45,35 @@ struct DumpsterWidgetView: View {
                         .font(.caption)
                 }
             }
+            .widgetURL(URL(string: "dumpster://voice-bullet")!)
         case .systemSmall:
-            // Home Screen small widget
-            VStack(spacing: 8) {
-                Image(systemName: "trash.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(.teal)
-                HStack(spacing: 4) {
+            VStack(spacing: 6) {
+                Image("DumpsterIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 56, height: 56)
+                HStack(spacing: 3) {
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 11))
-                    Text("Voice")
+                        .font(.system(size: 10))
+                    Text("Voice Bullet")
                         .font(.caption2.weight(.medium))
                 }
                 .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .containerBackground(.fill.tertiary, for: .widget)
+            .widgetURL(URL(string: "dumpster://voice-bullet")!)
         default:
-            // Fallback
             VStack(spacing: 6) {
-                Image(systemName: "trash.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.teal)
+                Image("DumpsterIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 44, height: 44)
                 Text("Voice Bullet")
                     .font(.caption.weight(.medium))
             }
             .containerBackground(.fill.tertiary, for: .widget)
+            .widgetURL(URL(string: "dumpster://voice-bullet")!)
         }
     }
 }

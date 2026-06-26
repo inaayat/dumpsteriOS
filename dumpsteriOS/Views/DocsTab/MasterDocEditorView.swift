@@ -637,8 +637,45 @@ struct NotesEditorRepresentable: UIViewRepresentable {
                 tv.attributedText = NSAttributedString(string: rtfContent, attributes: tv.defaultAttributes)
             }
         } else {
-            tv.attributedText = NSAttributedString(string: rtfContent, attributes: tv.defaultAttributes)
+            // Auto-convert legacy markdown to RTF
+            let converted = Self.markdownToAttributedString(rtfContent)
+            tv.attributedText = converted
+            // Persist as RTF so this only runs once
+            if let data = try? converted.data(from: NSRange(location: 0, length: converted.length),
+                                               documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]),
+               let rtf = String(data: data, encoding: .utf8) {
+                DispatchQueue.main.async { rtfContent = rtf }
+            }
         }
+    }
+
+    private static func markdownToAttributedString(_ markdown: String) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        let bodyFont = UIFont(name: "Inter-Regular", size: 16) ?? .systemFont(ofSize: 16)
+        let h1Font   = UIFont(name: "Inter-Bold", size: 22)    ?? .boldSystemFont(ofSize: 22)
+        let h2Font   = UIFont(name: "Inter-SemiBold", size: 18) ?? .boldSystemFont(ofSize: 18)
+        let color    = UIColor(Theme.textPrimary)
+        let lines    = markdown.components(separatedBy: "\n")
+
+        for (i, line) in lines.enumerated() {
+            let sep = i < lines.count - 1 ? "\n" : ""
+            if line.hasPrefix("### ") {
+                let text = String(line.dropFirst(4))
+                result.append(NSAttributedString(string: text + sep, attributes: [.font: h2Font, .foregroundColor: color]))
+            } else if line.hasPrefix("## ") {
+                let text = String(line.dropFirst(3))
+                result.append(NSAttributedString(string: text + sep, attributes: [.font: h1Font, .foregroundColor: color]))
+            } else if line.hasPrefix("# ") {
+                let text = String(line.dropFirst(2))
+                result.append(NSAttributedString(string: text + sep, attributes: [.font: h1Font, .foregroundColor: color]))
+            } else if line.hasPrefix("* ") || line.hasPrefix("- ") {
+                let text = "• " + String(line.dropFirst(2))
+                result.append(NSAttributedString(string: text + sep, attributes: [.font: bodyFont, .foregroundColor: color]))
+            } else {
+                result.append(NSAttributedString(string: line + sep, attributes: [.font: bodyFont, .foregroundColor: color]))
+            }
+        }
+        return result
     }
 
     private func fixFonts(in attrStr: NSMutableAttributedString) {
@@ -989,6 +1026,7 @@ struct MasterDocEditorView: View {
     @State private var placementItem: PlacementData? = nil
     @State private var placementHeading: String? = nil
     @State private var showOutline = false
+    @State private var saveTimer: Timer? = nil
 
     private var aiAvailable: Bool {
         if #available(iOS 26.0, *) { return AIService.isAvailable }
@@ -1034,7 +1072,10 @@ struct MasterDocEditorView: View {
                 textViewRef = tv
             })
             .onChange(of: content) { _, newValue in
-                try? Queries.upsertMasterDoc(tagId: doc.tagId, content: newValue, title: title)
+                saveTimer?.invalidate()
+                saveTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
+                    try? Queries.saveMasterDoc(id: doc.id, content: newValue, title: title)
+                }
             }
         }
         .background(Theme.canvas)
@@ -1062,7 +1103,15 @@ struct MasterDocEditorView: View {
         }
         .sheet(item: $placementItem) { data in
             PlacementPreviewSheet(item: data.item, suggestedHeading: data.heading, content: content) { heading in
-                insertItemUnderHeading(item: data.item, heading: heading)
+                Task {
+                    var rewritten: String? = nil
+                    if #available(iOS 26.0, *) {
+                        rewritten = try? await AIService.rewriteBullet(data.item.text, forHeading: heading)
+                    }
+                    await MainActor.run {
+                        insertItemUnderHeading(item: data.item, heading: heading, rewrittenText: rewritten)
+                    }
+                }
             }
         }
         .sheet(isPresented: $showOutline) {
@@ -1072,6 +1121,11 @@ struct MasterDocEditorView: View {
             content = doc.content
             title = doc.title
             reload()
+        }
+        .onDisappear {
+            saveTimer?.invalidate()
+            saveTimer = nil
+            try? Queries.saveMasterDoc(id: doc.id, content: content, title: title)
         }
     }
 
@@ -1184,10 +1238,19 @@ struct MasterDocEditorView: View {
                 VStack(spacing: 0) {
                     ForEach(inboxItems.prefix(8)) { item in
                         HStack(spacing: 8) {
+                            Button {
+                                try? Queries.completeItem(id: item.id)
+                                try? Queries.dismissItemFromDoc(id: item.id)
+                                reload()
+                            } label: {
+                                Image(systemName: "circle")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(Theme.textMuted.opacity(0.4))
+                            }
                             Image(systemName: item.category.icon)
                                 .font(.system(size: 10))
                                 .foregroundStyle(Theme.categoryColor(item.category).opacity(0.6))
-                                .frame(width: 16)
+                                .frame(width: 14)
                             Text(item.text)
                                 .font(.inter(13))
                                 .foregroundStyle(Theme.textPrimary)
@@ -1240,29 +1303,40 @@ struct MasterDocEditorView: View {
                 VStack(spacing: 0) {
                     ForEach(allItems) { item in
                         HStack(spacing: 8) {
+                            Button {
+                                if item.done {
+                                    try? Queries.uncompleteItem(id: item.id)
+                                } else {
+                                    try? Queries.completeItem(id: item.id)
+                                }
+                                reloadAllItems()
+                            } label: {
+                                Image(systemName: item.done ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(item.done ? Theme.successColor : Theme.textMuted.opacity(0.4))
+                            }
                             Image(systemName: item.category.icon)
                                 .font(.system(size: 10))
-                                .foregroundStyle(Theme.categoryColor(item.category).opacity(0.6))
-                                .frame(width: 16)
+                                .foregroundStyle(Theme.categoryColor(item.category).opacity(item.done ? 0.3 : 0.6))
+                                .frame(width: 14)
                             Text(item.text)
                                 .font(.inter(13))
-                                .foregroundStyle(Theme.textPrimary)
+                                .foregroundStyle(item.done ? Theme.textMuted : Theme.textPrimary)
+                                .strikethrough(item.done, color: Theme.textMuted)
                                 .lineLimit(2)
                             Spacer()
-                            if item.incorporatedIntoDoc {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(Theme.successColor.opacity(0.5))
-                            } else if item.dismissedFromDoc {
-                                HStack(spacing: 6) {
+                            if !item.done {
+                                HStack(spacing: 4) {
+                                    if item.incorporatedIntoDoc {
+                                        Image(systemName: "checkmark.circle")
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(Theme.successColor.opacity(0.5))
+                                    }
                                     Button { addItemToDoc(item) } label: {
                                         Image(systemName: "plus.circle")
-                                            .font(.system(size: 14))
-                                            .foregroundStyle(Theme.accent.opacity(0.5))
+                                            .font(.system(size: 15))
+                                            .foregroundStyle(Theme.accent.opacity(0.6))
                                     }
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(Theme.textMuted.opacity(0.3))
                                 }
                             }
                         }
@@ -1310,7 +1384,7 @@ struct MasterDocEditorView: View {
         let trimmed = editedTitle.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty {
             title = trimmed
-            try? Queries.upsertMasterDoc(tagId: doc.tagId, content: content, title: title)
+            try? Queries.saveMasterDoc(id: doc.id, content: content, title: title)
         }
         isEditingTitle = false
     }
@@ -1324,18 +1398,16 @@ struct MasterDocEditorView: View {
         }
 
         Task {
-            if #available(iOS 26.0, *) {
-                let headings = content.components(separatedBy: "\n")
-                    .filter { $0.hasPrefix("##") || $0.hasPrefix("# ") }
-                    .map { $0.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces) }
+            let headings = DocHeadingExtractor.extractHeadings(from: content)
 
-                if headings.isEmpty {
-                    await MainActor.run {
-                        placementItem = PlacementData(item: item, heading: "General")
-                    }
-                    return
+            if headings.isEmpty {
+                await MainActor.run {
+                    placementItem = PlacementData(item: item, heading: "General")
                 }
+                return
+            }
 
+            if #available(iOS 26.0, *) {
                 do {
                     let suggested = try await AIService.suggestHeading(for: item.text, existingHeadings: headings)
                     await MainActor.run {
@@ -1343,14 +1415,15 @@ struct MasterDocEditorView: View {
                     }
                 } catch {
                     await MainActor.run {
-                        placementItem = PlacementData(item: item, heading: "General")
+                        placementItem = PlacementData(item: item, heading: headings.first ?? "General")
                     }
                 }
             }
         }
     }
 
-    private func insertItemUnderHeading(item: Item, heading: String) {
+    private func insertItemUnderHeading(item: Item, heading: String, rewrittenText: String? = nil, shouldReload: Bool = true) {
+        let bulletText = rewrittenText ?? item.text
         let attrStr = loadAsAttributedString()
         let fullText = attrStr.string
 
@@ -1390,14 +1463,14 @@ struct MasterDocEditorView: View {
                 insertLocation += 1
             }
 
-            let bullet = NSAttributedString(string: "\n• \(item.text)", attributes: [.font: bulletFont, .foregroundColor: textColor])
+            let bullet = NSAttributedString(string: "\n• \(bulletText)", attributes: [.font: bulletFont, .foregroundColor: textColor])
             result.insert(bullet, at: insertLocation)
         } else {
             // Heading doesn't exist — append new section
             let newSection = NSMutableAttributedString()
             newSection.append(NSAttributedString(string: "\n\n", attributes: [.font: bulletFont]))
             newSection.append(NSAttributedString(string: heading, attributes: [.font: headingFont, .foregroundColor: textColor]))
-            newSection.append(NSAttributedString(string: "\n• \(item.text)", attributes: [.font: bulletFont, .foregroundColor: textColor]))
+            newSection.append(NSAttributedString(string: "\n• \(bulletText)", attributes: [.font: bulletFont, .foregroundColor: textColor]))
             result.append(newSection)
         }
 
@@ -1409,7 +1482,7 @@ struct MasterDocEditorView: View {
         }
 
         try? Queries.markItemIncorporated(id: item.id)
-        reload()
+        if shouldReload { reload() }
     }
 
     private func loadAsAttributedString() -> NSAttributedString {
@@ -1428,34 +1501,36 @@ struct MasterDocEditorView: View {
         isSynthesizing = true
         aiError = nil
 
-        let bulletTexts = inboxItems.map(\.text)
+        let itemsToSort = inboxItems
+        let bulletTexts = itemsToSort.map(\.text)
+        let headings = DocHeadingExtractor.extractHeadings(from: content)
         let totalSize = content.count + bulletTexts.joined().count
 
         Task {
             do {
-                let result: String
-                if totalSize < 6000 {
-                    // Small doc: full organize — AI creates categories and files everything
-                    result = try await AIService.synthesizeMasterDoc(existingContent: content, bullets: bulletTexts.joined(separator: "\n"))
+                if totalSize < 6000 && headings.isEmpty {
+                    // Empty doc: let AI create categories and file everything (returns markdown, auto-converted)
+                    let result = try await AIService.synthesizeMasterDoc(existingContent: content, bullets: bulletTexts.joined(separator: "\n"))
+                    await MainActor.run {
+                        content = result
+                        for item in itemsToSort { try? Queries.markItemIncorporated(id: item.id) }
+                        isSynthesizing = false
+                        reload()
+                    }
+                } else if headings.isEmpty {
+                    throw AIService.AIError.documentTooLarge
                 } else {
-                    // Large doc: only use existing headers to place items
-                    let headings = content.components(separatedBy: "\n")
-                        .filter { $0.hasPrefix("##") || $0.hasPrefix("# ") }
-                        .map { $0.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces) }
-
-                    if headings.isEmpty {
-                        throw AIService.AIError.documentTooLarge
+                    // Doc has headings: place each item under the correct heading using RTF-safe insertion
+                    for item in itemsToSort {
+                        let suggested = (try? await AIService.suggestHeading(for: item.text, existingHeadings: headings)) ?? headings[0]
+                        await MainActor.run {
+                            insertItemUnderHeading(item: item, heading: suggested, shouldReload: false)
+                        }
                     }
-                    result = try await AIService.insertBulletsIntoDoc(existingContent: content, bullets: bulletTexts)
-                }
-
-                await MainActor.run {
-                    content = result
-                    for item in inboxItems {
-                        try? Queries.markItemIncorporated(id: item.id)
+                    await MainActor.run {
+                        isSynthesizing = false
+                        reload()
                     }
-                    isSynthesizing = false
-                    reload()
                 }
             } catch {
                 await MainActor.run {
@@ -1615,9 +1690,7 @@ struct HeadingPickerView: View {
     @State private var newHeading = ""
 
     private var headings: [String] {
-        content.components(separatedBy: "\n")
-            .filter { $0.hasPrefix("##") || $0.hasPrefix("# ") }
-            .map { $0.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces) }
+        DocHeadingExtractor.extractHeadings(from: content)
     }
 
     var body: some View {
