@@ -8,6 +8,16 @@ struct DocsListView: View {
 
     var body: some View {
         List {
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Master Docs are living documents that collect and organize your thoughts by topic. Assign tags to a doc, and any bullets or items with those tags will appear in the doc's inbox — ready to be sorted under category headings. Use #save in your dump to file a bullet directly, or tap Sort Trash to batch-organize your inbox with AI.")
+                        .font(.inter(12))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                .padding(.vertical, 4)
+                .listRowSeparator(.hidden)
+            }
+
             if docs.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "doc.text")
