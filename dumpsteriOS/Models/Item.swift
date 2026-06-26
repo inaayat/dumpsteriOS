@@ -64,7 +64,28 @@ extension Item: FetchableRecord, PersistableRecord, TableRecord {
     static let databaseTableName = "items"
 
     enum Columns: String, ColumnExpression {
-        case id, text, category, priority, done, doneAt, dueDate, url, urlTitle, notes, incorporatedIntoDoc, createdAt
+        case id, text, category, priority, done, doneAt, dueDate, url, urlTitle, notes, incorporatedIntoDoc, dismissedFromDoc, createdAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, text, category, priority, done, doneAt, dueDate, url, urlTitle, notes, incorporatedIntoDoc, dismissedFromDoc, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        text = try container.decode(String.self, forKey: .text)
+        category = try container.decode(Category.self, forKey: .category)
+        priority = try container.decode(Priority.self, forKey: .priority)
+        done = try container.decode(Bool.self, forKey: .done)
+        doneAt = try container.decodeIfPresent(Date.self, forKey: .doneAt)
+        dueDate = try container.decodeIfPresent(Date.self, forKey: .dueDate)
+        url = try container.decodeIfPresent(String.self, forKey: .url)
+        urlTitle = try container.decodeIfPresent(String.self, forKey: .urlTitle)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        incorporatedIntoDoc = try container.decodeIfPresent(Bool.self, forKey: .incorporatedIntoDoc) ?? false
+        dismissedFromDoc = try container.decodeIfPresent(Bool.self, forKey: .dismissedFromDoc) ?? false
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
     }
 }
 
